@@ -1,0 +1,243 @@
+#!/usr/bin/env python
+#
+# Copyright (c) 2010-2017, David Dittrich <dave.dittrich@gmail.com>
+# All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import subprocess
+import os
+import json
+import tempfile
+import hashlib
+import urllib
+import sys
+import pika
+import base64
+import time
+from optparse import OptionParser
+
+# Local imports
+from rpc import rpc_common
+from rpc import rpcserver
+from rpc import rpcrequest
+from rpc import rpcresponse
+
+PROGRAM = 'cifbulk'
+
+NAME = 'CIF Bulk Query RPC Server'
+
+USAGE = """
+
+USAGE...
+
+"""
+
+class CIFBulkServer(rpcserver.RPC_Server):
+    """ CIF Bulk Query RPC Server. """
+
+    CIFBULKURL = "http://127.0.0.1/"
+    CIF = "/opt/cif/bin/cif"
+
+    def __init__(self, *args, **kwargs):
+        self.usesphinx = kwargs.pop('usesphinx', False)
+        rpcserver.RPC_Server.__init__(self, *args, **kwargs)
+        self.requestobj = rpcrequest.RPC_Request(program=PROGRAM)
+        self.name = NAME
+
+    def get_usage(self):
+        return USAGE
+
+    def on_request(self, chan, method, props, body):
+        """ipgrep API call."""
+        self.logdebug("Callback on_request initiated")
+        self.loginfo(self.get_idstr())
+        self.loginfo("routing_key=%s correlation_id=%s" \
+                % (props.reply_to, props.correlation_id))
+
+        self.requestobj.loads(body)
+        self.logdebug("Request is %s" % self.requestobj.terse())
+
+        # Pull out message body and send through ipgrep
+        appdata = self.requestobj.get_appdata()
+        usage = appdata.get('usage', 'false')
+        stime = int(appdata.get('stime', 0))
+        etime = int(appdata.get('etime', 0))
+        noheader = appdata.get('noheader', 'false')
+        stats = appdata.get('stats', 'false')
+        searchfile = base64.b64decode(appdata.get('searchfile', ''))
+
+        self.logdebug("Calling self._application()")
+        self.responseobj = rpcresponse.RPC_Response(program=PROGRAM)
+        start = int(time.time())
+        (retcode, stdout_, stderr_) = self._application(
+                stime=stime,
+                etime=etime,
+                noheader=noheader,
+                searchfile=searchfile,
+                usage=usage)
+        self.loginfo("Call to self._application() took " +
+            "%d " % int(time.time() - start) +
+            "seconds (host %s, pid %d)" % (self.get_hostname(), self.get_pid()))
+        self.responseobj.set_appdata({'retcode': retcode,
+                'stdout' : base64.b64encode(stdout_),
+                'stderr' : base64.b64encode(stderr_)})
+
+        self.server_log_response(self.responseobj)
+        self.logdebug("Server basic_publish: routing_key=%s correlation_id=%s" \
+                % (props.reply_to, props.correlation_id))
+        chan.confirm_delivery()
+        chan.basic_publish(exchange='',
+                routing_key=props.reply_to,
+                properties=pika.BasicProperties(
+                    correlation_id=props.correlation_id),
+                body=str(self.responseobj))
+        self.logdebug("ACK basic_ack delivery_tag %s" % method.delivery_tag)
+        chan.basic_ack(delivery_tag=method.delivery_tag)
+        self.logdebug("Returning from API call")
+
+    def _application(self,
+            stime=None,
+            etime=None,
+            noheader="false",
+            searchfile=None,
+            usage="false"):
+
+        """Search CIF using Sphinx."""
+
+        self.logdebug("Entering _application()")
+
+        if usage == "true":
+            retcode = 0
+            stdout_ = """ CIF BULK USAGE STRING...
+            """
+            stderr_ = ""
+        elif searchfile == "":
+            retcode = 1
+            stdout_ = ""
+            stderr_ = "No searchfile specified"
+        else:
+            self.logdebug("Creating spooled temporary file for searchfile")
+            f = tempfile.SpooledTemporaryFile()
+            f.write(searchfile)
+            f.seek(0)
+            results = []
+            items = [items.strip() for items in f]
+            for item in items:
+                if self.usesphinx:
+                    _url = "%s/%s" % (self.CIFBULKURL, item)
+                    self.logdebug("Calling Sphinx with %s" % _url)
+                    sphinx = urllib.urlopen(_url)
+                    data = sphinx.read()
+                    sphinx.close()
+                else:
+                    # Call CIF directly
+                    self.logdebug("Searching CIF for %s" % item)
+                    _cmd = "%s -n -q %s -p json"
+                    p = subprocess.Popen((_cmd % (self.CIF, item)).split(),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        bufsize=-1,
+                        close_fds=True)
+
+                    # std out and err are now strings instead of file objects
+                    stdout,stderr = p.communicate()
+
+                    if p.returncode != 0:
+                        self.loginfo("cif query for '%s' returned a non-zero exit code: %s" % (item, p.returncode))
+                        continue
+
+                    if stdout is None:
+                        self.loginfo("cif query for '%s' produced no results" % item)
+                    else:
+                        data = stdout
+
+                ds = "<<%d bytes; SHA1: %s>>" % \
+                                (len(data), hashlib.sha1(data).hexdigest())
+                self.logdebug("Received %s" % ds)
+                results.extend([{'searchitem': item,
+                    'results': json.loads("[%s]" % ",".join([i for i in data.split('\n')]))}])
+            f.close()
+            retcode = 0
+            result_frame = {
+                    "program": self.program,
+                    'time': int(time.time()),
+                    "iff": "foe",
+                    "results": results}
+
+            stdout_ = json.dumps(result_frame)
+            stderr_ = ""
+
+        if retcode != 0:
+            self.logdebug("Program cifbulk returned a non-zero " +
+                "exit code: %s\n" % retcode)
+        if stdout_ is None:
+            self.loginfo("cifbulk returned no output")
+        else:
+            s = "Output: %d bytes; SHA1: %s" % \
+                    (len(stdout_), hashlib.sha1(stdout_).hexdigest())
+            self.logdebug(s)
+        return (retcode, stdout_, stderr_)
+
+
+parser = OptionParser()
+parser.add_option("-d", "--debug",
+    action="store_true", dest="debug",
+    help="Turn on debugging mode")
+parser.add_option("-e", "--exchange",
+    action="store", dest="exchange", metavar="EXCHANGE",
+    default="",
+    help="Exchange to use (default: '')")
+parser.add_option("-m", "--map",
+    action="store", dest="mapfile", metavar="MAPFILE",
+    help="Mapping file.")
+parser.add_option("-q", "--queue-base", default=PROGRAM,
+    action="store", dest="queuebase", metavar="QUEUEBASE",
+    help="Queue base name to use (default %s)" % PROGRAM)
+parser.add_option("-S", "--use-sphinx",
+    action="store_true", default=False, dest="usesphinx",
+    help="Use Sphinx (deprecated; default: False)")
+parser.add_option("--server",
+    action="store", dest="server", metavar="SERVER",
+    default=None,
+    help="RabbitMQ server (default: None)")
+parser.add_option("-u", "--usage",
+    action="store_true", dest="usage",
+    help="Print usage information.")
+parser.add_option("-v", "--verbose",
+    action="store_true", dest="verbose", default=False,
+    help="Be verbose (on stdout) about what is happening")
+(options, args) = parser.parse_args()
+
+_progname = sys.argv[0]
+
+USAGESTRING = """usage: %(_progname)s [options] [args]
+"""
+
+if options.usage:
+    sys.stdout.write(USAGESTRING % vars())
+    sys.exit(0)
+
+cifbulk_server = CIFBulkServer(program=PROGRAM,
+        scriptname=_progname,
+        verbose=options.verbose,
+        debug=options.debug,
+        usesphinx=options.usesphinx,
+        server=options.server,
+        exchange=options.exchange,
+        queuebase=options.queuebase)
+
+cifbulk_server.logdebug("Calling cifbulk_server.run()")
+cifbulk_server.run()
+cifbulk_server.logdebug("Exiting")
+sys.exit(0)

@@ -1,0 +1,78 @@
+#CIDR_or_domain|SiteID|AnonString
+[
+	{"participant": "DEFAULT",
+	 "networks": [
+		"140.142.29.0/24"
+	 ],
+	 "domains": [
+		".prisem.washington.edu"
+	 ],
+	 "tlp-red-id": "PRISEM",
+	 "tlp-amber-id": "PRISEM",
+	 "tlp-green-id": "PRISEM",
+	 "tlp-white-id": "PRISEM"},
+	{"participant": "City of Seattle",
+	 "networks": [
+		"156.74.0.0/16"
+	 ],
+	 "domains": [
+		".seattle.gov",
+		".seattle.wa.gov"
+	 ],
+	 "tlp-red-id": "CTYSEA",
+	 "tlp-amber-id": "CTYSEA",
+	 "tlp-green-id": "CTYSEA",
+	 "tlp-white-id": "CTYSEA"},
+	{"participant": "Seattle Children's Hospital",
+	 "networks": [
+	 	"146.79.0.0/16"
+	],
+	 "domains": [
+	],
+	],
+	 "tlp-red-id": "",
+	 "tlp-amber-id": "",
+	 "tlp-green-id": "",
+	 "tlp-white-id": ""},
+12.17.152.0/23|COB|COB
+	{"participant": "",
+	 "networks": [
+	],
+	 "domains": [
+	],
+	 "tlp-red-id": "",
+	 "tlp-amber-id": "",
+	 "tlp-green-id": "",
+	 "tlp-white-id": ""},
+146.129.0.0/16|KING|KING
+146.218.0.0/16|KITSAP|KITSAP
+	{"participant": "",
+	 "networks": [
+	],
+	 "domains": [
+	],
+	 "tlp-red-id": "",
+	 "tlp-amber-id": "",
+	 "tlp-green-id": "",
+	 "tlp-white-id": ""},
+205.234.64.0/20|PORTEV|PORTEV
+.portofeverett.com|PORTEV|PORTEV
+	{"participant": "",
+	 "networks": [
+	],
+	 "domains": [
+	],
+	 "tlp-red-id": "",
+	 "tlp-amber-id": "",
+	 "tlp-green-id": "",
+	 "tlp-white-id": ""},
+192.103.189.0/24|PORTTAC|PORTTAC
+66.113.101.0/24|PORTTAC|PORTTAC
+.portoftacoma.com|PORTTAC|PORTTAC
+209.23.243.128/26|PORTOLY|PORTOLY
+.portolympia.com|PORTOLY|PORTOLY
+174.127.160.0/24|COB|BELLWA
+12.17.152.0/23|COB|BELLWA
+.bellevuewa.gov|COB|BELLWA
+.ci.bellevue.wa.us|COB|BELLWA
+

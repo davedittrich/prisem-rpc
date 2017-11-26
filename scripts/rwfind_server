@@ -1,0 +1,284 @@
+#!/usr/bin/env python
+#
+# Copyright (c) 2010-2017, David Dittrich <dave.dittrich@gmail.com>
+# All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import subprocess
+import os
+import json
+import tempfile
+import hashlib
+import sys
+import pika
+import base64
+import time
+from optparse import OptionParser
+
+# Local imports
+from rpc import rpc_common
+from rpc import rpcserver
+from rpc import rpcrequest
+from rpc import rpcresponse
+
+PROGRAM = 'rwfind'
+
+NAME = 'Rwfind SiLK Search RPC Server'
+
+USAGE = """usage: %(_progname)s [options] [args]
+
+
+Example RPC command structure
+-----------------------------
+
+{
+    "appdata": {
+        "etime": 1388793600,
+        "json": "true",
+        "noheader": "false",
+        "searchfile": "ODkuMjQ4LjE3Mi41OAo=",
+        "stime": 1388707200,
+        "topn": 100
+    },
+    "hostname": "27b-6.local",
+    "name": "rwfind",
+    "pid": 84361,
+    "platform": "Darwin Kernel Version 11.4.2: Thu Aug 23 16:25:48 PDT 2012; root:xnu-1699.32.7~1/RELEASE_X86_64",
+    "protocolver": "0.4",
+    "release": "0.4.7",
+    "time": 1391321523
+}
+
+
+Example output (JSON format)
+----------------------------
+
+{
+ "program": "rwfind",
+ "date": "Sun, 02 Feb 2014 06:09:34 +0000",
+ "sdate": "2014/01/03:00",
+ "edate": "2014/01/04:00",
+ "stime": 1388707200,
+ "etime": 1388793600,
+ "flows_found": "4",
+ "flows": [
+   {"sIP":"89.248.172.58","dIP":"[___CTYSEA__]","sPort":"14969","dPort":"22","pro":"6","packets":"1","bytes":"48","flags":"S","sTime":"2014/01/03T23:22:13.994","dur":"0.000"},
+   {"sIP":"89.248.172.58","dIP":"[___CTYSEA__]","sPort":"14969","dPort":"22","pro":"6","packets":"1","bytes":"48","flags":"S","sTime":"2014/01/03T23:22:13.994","dur":"0.000"},
+   {"sIP":"89.248.172.58","dIP":"[___CTYSEA__]","sPort":"14969","dPort":"22","pro":"6","packets":"1","bytes":"48","flags":"S","sTime":"2014/01/03T23:22:13.995","dur":"0.000"},
+   {"sIP":"89.248.172.58","dIP":"[___CTYSEA__]","sPort":"14969","dPort":"22","pro":"6","packets":"1","bytes":"48","flags":"S","sTime":"2014/01/03T23:22:13.997","dur":"0.000"}
+  ],
+ "topn": 100,
+ "flow_stats": [
+   {"sIP":"89.248.172.58", "dIP":"[___CTYSEA__]", "Bytes":"48", "%_of_total":"25.000000", "cumul_%":"25.000000"},
+   {"sIP":"89.248.172.58", "dIP":"[___CTYSEA__]", "Bytes":"48", "%_of_total":"25.000000", "cumul_%":"50.000000"},
+   {"sIP":"89.248.172.58", "dIP":"[___CTYSEA__]", "Bytes":"48", "%_of_total":"25.000000", "cumul_%":"75.000000"},
+   {"sIP":"89.248.172.58", "dIP":"[___CTYSEA__]", "Bytes":"48", "%_of_total":"25.000000", "cumul_%":"100.000000"}
+  ]
+}
+
+
+"""
+TOPN = 0
+
+class RwfindServer(rpcserver.RPC_Server):
+    """ Rwfind SiLK Search RPC Server. """
+
+    def __init__(self, *args, **kwargs):
+        rpcserver.RPC_Server.__init__(self, *args, **kwargs)
+        self.requestobj = rpcrequest.RPC_Request(program=PROGRAM)
+        self.name = NAME
+
+    def get_usage(self):
+        return USAGE
+
+    def on_request(self, chan, method, props, body):
+        """ipgrep API call."""
+        self.logdebug("Callback on_request initiated")
+        self.loginfo(self.get_idstr())
+        self.loginfo("routing_key=%s correlation_id=%s" \
+                % (props.reply_to, props.correlation_id))
+
+        self.requestobj.loads(body)
+        self.logdebug("Request is %s" % self.requestobj.terse())
+
+        # Pull out message body and send through ipgrep
+        appdata = self.requestobj.get_appdata()
+        user = appdata.get('user', None)
+        usage = appdata.get('usage', 'false')
+        stime = int(appdata.get('stime', 0))
+        etime = int(appdata.get('etime', 0))
+        noheader = appdata.get('noheader', 'false')
+        jsonout = appdata.get('json', 'true')
+        topn = appdata.get('topn', TOPN)
+        searchfile = base64.b64decode(appdata.get('searchfile', ''))
+
+        self.logdebug("Calling self._application()")
+        self.responseobj = rpcresponse.RPC_Response(program=PROGRAM)
+        start = int(time.time())
+        (retcode, stdout_, stderr_) = self._application(
+                user=user,
+                stime=stime,
+                etime=etime,
+                noheader=noheader,
+                jsonout=jsonout,
+                searchfile=searchfile,
+                topn=topn,
+                usage=usage)
+        self.loginfo("Call to self._application() took " +
+            "%d " % int(time.time() - start) +
+            "seconds (host %s, pid %d)" % (self.get_hostname(), self.get_pid()))
+        self.responseobj.set_appdata({'retcode': retcode,
+                'stdout' : base64.b64encode(stdout_),
+                'stderr' : base64.b64encode(stderr_)})
+
+        self.server_log_response(self.responseobj)
+        self.logdebug("Server basic_publish: routing_key=%s correlation_id=%s" \
+                % (props.reply_to, props.correlation_id))
+        chan.confirm_delivery()
+        chan.basic_publish(exchange='',
+                routing_key=props.reply_to,
+                properties=pika.BasicProperties(
+                    correlation_id=props.correlation_id),
+                body=str(self.responseobj))
+        self.logdebug("ACK basic_ack delivery_tag %s" % method.delivery_tag)
+        chan.basic_ack(delivery_tag=method.delivery_tag)
+        self.logdebug("Returning from API call")
+
+    def _application(self,
+            user=None,
+            stime=0,
+            etime=0,
+            noheader="false",
+            jsonout="true",
+            searchfile=None,
+            topn=TOPN,
+            usage="false"):
+
+        """Search network flows."""
+
+        self.logdebug("Entering _application()")
+
+        # HACK - this is a temporary user authorization hack.
+        if user is None or user != 'lancepanel':
+            return (1, "", "Error: %s service " % PROGRAM + \
+                "user authorization failure\n")
+
+        rwfind="/usr/local/bin/rwfind"
+        cmd = [rwfind]
+        
+        if usage == "true":
+            cmd.extend(["--usage"])
+        else:
+            cmd.extend(["--flows", "'in inweb out outweb'"])
+        if jsonout == "true":
+            cmd.extend(["--json"])
+        if noheader == "true":
+            cmd.extend(["--no-header"])
+        if stime is not None:
+            try:
+                stime = int(stime)
+            except ValueError:
+                self.loginfo("Value for stime '%s' not valid" % str(stime))
+            except Exception:
+                raise
+            cmd.extend(["--start-date", time.strftime("%Y/%m/%d:%H", time.gmtime(float(stime)))])
+        if etime is not None:
+            try:
+                etime = int(etime)
+            except ValueError:
+                self.loginfo("Value for etime '%s' not valid" % str(etime))
+            except Exception:
+                raise
+            cmd.extend(["--end-date", time.strftime("%Y/%m/%d:%H", time.gmtime(float(etime)))])
+        if searchfile == "":
+            return (1, "", "Error: %s service " % PROGRAM + \
+                "received nothing to search for\n")
+        else:
+            (sf,sfpath) = tempfile.mkstemp()
+            self.logdebug("Creating temporary searchfile file: %s" % sfpath)
+            os.write(sf,searchfile)
+            cmd.extend(["--searchfile", sfpath])
+        if topn > 0:
+            cmd.extend(["--top", str(int(topn))])
+
+        cmdtmp = "Running command \"%s\"" % " ".join([i for i in cmd])
+        self.logdebug("%s" % cmdtmp)
+        p = subprocess.Popen(cmd,
+            stdin=None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=os.environ)
+        (stdout_, stderr_) = p.communicate()
+        try:
+            os.close(sf)
+            os.unlink(sfpath)
+        except Exception:
+            pass
+
+        if p.returncode != 0:
+            self.logdebug("Program %s " % rwfind +
+                    "returned a non-zero exit code: %s\n" % p.returncode)
+        if stdout_ is None:
+            self.loginfo("%s returned no output" % rwfind)
+        else:
+            s = "Output: %d bytes; SHA1: %s" % \
+                    (len(stdout_), hashlib.sha1(stdout_).hexdigest())
+            self.logdebug(s)
+        return (p.returncode, stdout_, stderr_)
+
+
+parser = OptionParser()
+parser.add_option("-d", "--debug",
+    action="store_true", dest="debug",
+    help="Turn on debugging mode")
+parser.add_option("-e", "--exchange",
+    action="store", dest="exchange", metavar="EXCHANGE",
+    default="",
+    help="Exchange to use (default: '')")
+parser.add_option("-m", "--map",
+    action="store", dest="mapfile", metavar="MAPFILE",
+    help="Mapping file.")
+parser.add_option("-q", "--queue-base", default=PROGRAM,
+    action="store", dest="queuebase", metavar="QUEUEBASE",
+    help="Queue base name to use (default %s)" % PROGRAM)
+parser.add_option("--server",
+    action="store", dest="server", metavar="SERVER",
+    default=None,
+    help="RabbitMQ server (default: None)")
+parser.add_option("-u", "--usage",
+    action="store_true", dest="usage",
+    help="Print usage information.")
+parser.add_option("-v", "--verbose",
+    action="store_true", dest="verbose", default=False,
+    help="Be verbose (on stdout) about what is happening")
+(options, args) = parser.parse_args()
+
+_progname = sys.argv[0]
+
+if options.usage:
+    sys.stdout.write(USAGE % vars())
+    sys.exit(0)
+
+rwfind_server = RwfindServer(program=PROGRAM,
+        scriptname=_progname,
+        verbose=options.verbose,
+        debug=options.debug,
+        server=options.server,
+        exchange=options.exchange,
+        queuebase=options.queuebase)
+
+rwfind_server.logdebug("Calling rwfind_server.run()")
+rwfind_server.run()
+rwfind_server.logdebug("Exiting")
+sys.exit(0)

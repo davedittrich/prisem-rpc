@@ -1,0 +1,194 @@
+#!/usr/bin/env python
+#
+# Copyright (c) 2010-2017, David Dittrich <dave.dittrich@gmail.com>
+# All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import time
+import sys
+import os
+import fileinput
+from optparse import OptionParser
+from datetime import *
+from dateutil.tz import *
+
+# Local imports
+
+from rpc import rpc_common
+from rpc.logmonclient import LogmonClient
+
+PROGRAM = 'logmon'
+
+USAGESTRING="""usage: %(_progname)s [options] [args]"""
+
+_progname=os.path.basename(sys.argv[0])
+_shortname, _extension = os.path.splitext(_progname)
+
+parser = OptionParser(usage=USAGESTRING % vars())
+parser.add_option(
+    "-d",
+    "--debug",
+    action="store_true",
+    dest="debug",
+    help="Turn on debugging mode."
+    )
+parser.add_option(
+    "-l",
+    "--log-exchange",
+    action="store",
+    dest="logexchange",
+    metavar="LOGEXCHANGE",
+    default=rpc_common.LOGEXCHANGE,
+    help="Exchange to use for log messages [default: '{}']".format(rpc_common.LOGEXCHANGE)
+    )
+parser.add_option(
+    "--log",
+    action="store_true",
+    dest="log",
+    default=False,
+    help="Log to file (change name of file with --logfile) [default: False]"
+    )
+parser.add_option(
+    "--logfile",
+    action="store",
+    dest="logfile",
+    metavar="LOGFILE",
+    default="{0}.log".format(_progname),
+    help="Exchange to use for log messages [default: '{0}.log']".format(_progname)
+    )
+parser.add_option(
+    "-m",
+    "--send-message",
+    action="store",
+    dest="sendmessage",
+    metavar="MESSAGE",
+    default=None,
+    help="Message to send to log fanout (default: None)"
+    )
+parser.add_option(
+    "-s",
+    "--send",
+    action="store_true",
+    dest="send",
+    metavar="MESSAGE",
+    default=False,
+    help="send files and/or stdin to log fanout [default: False]"
+    )
+parser.add_option(
+    "--server",
+    action="store",
+    dest="server",
+    metavar="SERVER",
+    default=rpc_common.SERVER,
+    help="RabbitMQ server (default: {})".format(rpc_common.SERVER)
+    )
+parser.add_option(
+    "-u",
+    "--usage",
+    action="store_true",
+    dest="usage",
+    help="Print usage information."
+    )
+parser.add_option(
+    "-V",
+    "--version",
+    action="store_true",
+    dest="version",
+    help="Print version and exit."
+    )
+parser.add_option(
+    "--display-utc",
+    action="store_true",
+    dest="display_utc",
+    metavar="DISPLAY_UTC",
+    default=rpc_common.DISPLAY_UTC,
+    help="Display time stamps in UTC (default: {}).".format(rpc_common.DISPLAY_UTC)
+    )
+tzn = datetime.now(tzlocal()).tzname()
+parser.add_option(
+    "--display-localtime",
+    action="store_true",
+    dest="display_localtime",
+    metavar="DISPLAY_LOCAL",
+    default=None,
+    help="Display time stamps in local timezone. [TZ=%s]." % tzn
+    )
+parser.add_option(
+    "-v",
+    "--verbose",
+    action="store_true",
+    dest="verbose",
+    default=False,
+    help="Be verbose (on stdout) about what is happening."
+    )
+
+(options, args) = parser.parse_args()
+
+if options.version:
+    rpc_common.version()
+
+if options.usage:
+    usage = "true"
+else:
+    usage = "false"
+
+# Don't log unless asked
+if options.log:
+    _logfile = options.logfile
+else:
+    _logfile = None
+
+logmon_client = LogmonClient(
+        program=PROGRAM,
+        scriptname=_progname,
+        verbose=options.verbose,
+        debug=options.debug,
+        logfile=_logfile,
+        server=options.server,
+        logexchange=options.logexchange)
+
+if options.sendmessage and not options.send:
+    logmon_client.sendmessage(options.sendmessage)
+    sys.exit(0)
+
+if options.send:
+    # Send contents of any files on command line, followed
+    # by anything on stdin. If --send-message is also
+    # selected, use that as a preamble for bulk output.
+    try:
+        for line in fileinput.input(args, bufsize=1):
+            line = line.strip()
+            if options.sendmessage:
+                line = "{0} {1}".format(options.sendmessage,line)
+            logmon_client.sendmessage(line)
+    except IOError as e:
+        print("IOError({0}): {1}".format(e.errno, e.strerror))
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+    sys.exit(0)
+
+# Favor UTC over localtime if both options given.
+if options.display_localtime is not None:
+    logmon_client.set_display_utc(False)
+if options.display_utc is not None:
+    logmon_client.set_display_utc(True)
+
+try:
+    logmon_client.run()
+except KeyboardInterrupt:
+    sys.stderr.write('\n [*] Exiting on keyboard interrupt.\n')
+    pass
+except Exception:
+    raise
+sys.exit(0)

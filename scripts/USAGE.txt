@@ -1,0 +1,25 @@
+
+[These are quick and dirty instructions to give basic info on running
+the RPC scripts. Primarily designed to help SoD come up to speed at
+first. Thu Dec 19 12:55:18 PST 2013]
+
+1) To get the most recent code, type "git pull origin master".
+
+2) To get help from the Makefile on how to run scripts for testing, type "make
+   help". (You will see this text as part of the output.)
+
+3) To start the RPC server listening on a queue named with your login username
+   (e.g., the account "logmatrix" would have a queue named "ipgrep-logmatrix"),
+   type "make start".
+
+   Do this in a separate window to watch the --verbose output.
+
+   Do "tail -f rpc_anon_server.py.log" to watch the debug log file.
+
+4) To run the client and have it anonymize a test file
+   ("rwfind_201210011617_8428.txt"), type "make testa".
+   
+   The debugging output will be visible along with the client output.
+
+5) To stop the server, use "make stop" or "make clean".  The "make clean" step
+   will also delete all log files, temporary files, etc.

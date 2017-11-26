@@ -1,0 +1,215 @@
+#!/usr/bin/env python
+#
+# Copyright (c) 2010-2017, David Dittrich <dave.dittrich@gmail.com>
+# All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import time
+import json
+import pika
+import sys
+import sys
+import os
+import calendar
+import base64
+from optparse import OptionParser
+import hashlib
+import uuid
+
+# Local imports
+
+from rpc import rpc_common
+from rpc import rpcclient
+from rpc import rpcrequest
+from rpc import rpcresponse
+
+PROGRAM = 'rwfind'
+
+USAGESTRING="""usage: %(_progname)s [options] [args]"""
+
+_progname=sys.argv[0]
+_shortname, _extension = os.path.splitext(_progname)
+
+class RwfindClient(rpcclient.RPC_Client):
+    """ SiLK rwfind record search client. """
+
+    NAME = 'SiLK Network Flow Search RPC Client'
+
+    def __init__(self, *args, **kwargs):
+        rpcclient.RPC_Client.__init__(self, *args, **kwargs)
+
+parser = OptionParser(usage=USAGESTRING % vars())
+parser.add_option("-d", "--debug",
+    action="store_true", dest="debug",
+    help="Turn on debugging mode.")
+parser.add_option("-D", "--days", default="7",
+    action="store", dest="days", metavar="DAYS",
+    help="Number of days")
+parser.add_option("-e", "--rpc-exchange",
+    action="store", dest="rpcexchange", metavar="RPCEXCHANGE",
+    default="",
+    help="Exchange to use (default: '')")
+parser.add_option("-E", "--end-date", default=None,
+    action="store", dest="edate", metavar="EDATE",
+    help="End date (in YYYY/MM/DD[:HH] format, UTC timezone)")
+parser.add_option("--etime", default=None,
+    action="store", dest="etime", metavar="ENDTIME",
+    help="End time (in seconds from the epoch)")
+parser.add_option("-H", "--no-header",
+    action="store_true", dest="noheader", default=False,
+    help="Do not print '...flows found...' header.")
+parser.add_option("-J", "--json",
+    action="store_true", dest="json", default=False,
+    help="Output in JSON format.")
+parser.add_option("-r", "--searchfile", default=None,
+    action="store", dest="searchfile", metavar="SEARCHFILE",
+    help="Search for flows to/from specified IP addresses and CIDR blocks.")
+parser.add_option("--server",
+    action="store", dest="server", metavar="SERVER",
+    default=None,
+    help="RabbitMQ server (default: None)")
+parser.add_option("-S", "--start-date", default=None,
+    action="store", dest="sdate", metavar="SDATE",
+    help="Start date (in YYYY/MM/DD[:HH] format, UTC timezone)")
+parser.add_option("--stime", default=None,
+    action="store", dest="stime", metavar="STIME",
+    help="Start time (in second from the epoch format)")
+parser.add_option("-q", "--queue-base", default=PROGRAM,
+    action="store", dest="queuebase", metavar="QUEUEBASE",
+    help="Queue base name to use (default %s)" % PROGRAM)
+parser.add_option("-T", "--topn",
+    action="store", default=100, dest="topn",
+    help="Print the top (up to) N source/destination " +
+        "pairs by record count. (default 100)")
+parser.add_option("-u", "--usage",
+    action="store_true", dest="usage",
+    help="Print usage information.")
+parser.add_option("-v", "--verbose",
+    action="store_true", dest="verbose", default=False,
+    help="Be verbose (on stdout) about what is happening.")
+(options,args) = parser.parse_args()
+
+if options.usage:
+    usage = "true"
+else:
+    usage = "false"
+
+# Red pill, or Blue pill... you must chose.
+if options.edate is not None and options.etime is not None:
+    raise Error("Cannot specify both --end-date and --etime")
+if options.sdate is not None and options.stime is not None:
+    raise Error("Cannot specify both --start-date and --stime")
+
+etime = int(time.strftime("%s",time.gmtime()))
+stime = int(etime) - (60 * 60 * 24 * int(options.days))
+
+if options.edate is not None:
+    try:
+        ts = time.strptime(options.edate, "%Y/%m/%d:%H")
+    except ValueError:
+        try:
+            ts = time.strptime(options.edate, "%Y/%m/%d")
+        except ValueError:
+            raise ValueError("Invalid end date: %s" % options.edate)
+        except Exception:
+            raise
+    except Exception:
+        raise
+    etime = calendar.timegm(ts)
+
+if options.etime is not None:
+    try:
+        etime = int(options.etime)
+    except ValueError:
+        raise ValueError("Invalid etime: %s" % options.etime)
+    except Exception:
+        raise
+
+if options.sdate is not None:
+    try:
+        ts = time.strptime(options.sdate, "%Y/%m/%d:%H")
+    except ValueError:
+        try:
+            ts = time.strptime(options.sdate, "%Y/%m/%d")
+        except ValueError:
+            raise ValueError("Invalid start date: %s" % options.sdate)
+        except Exception:
+            raise
+    except Exception:
+        raise
+    stime = calendar.timegm(ts)
+
+if options.stime is not None:
+    try:
+        stime = int(options.stime)
+    except ValueError:
+        raise ValueError("Invalid stime: %s" % options.stime)
+    except Exception:
+        raise
+
+if options.noheader:
+    noheader = "true"
+else:
+    noheader = "false"
+
+if options.json:
+    json = "true"
+else:
+    json = "false"
+
+if options.searchfile is None:
+    sys.stderr.write("No search file specified: exiting.\n")
+    sys.exit(1)
+else:
+    sf = open(options.searchfile, "r")
+    searchfile = base64.b64encode(sf.read())
+    sf.close()
+
+# HACK - setting 'user' is a temporary authorization hack.
+argsopts = {'user':'lancepanel',
+            'stime': stime,
+            'etime': etime,
+            'json': json,
+            'noheader': noheader,
+            'topn': int(options.topn),
+            'searchfile': searchfile}
+
+rwfind_client = RwfindClient(
+        program=PROGRAM,
+        scriptname=_progname,
+        verbose=options.verbose,
+        debug=options.debug,
+        server=options.server,
+        exchange=options.rpcexchange,
+        queuebase=options.queuebase)
+
+requestobj = rpcrequest.RPC_Request(program=PROGRAM,
+        argsopts=argsopts)
+
+responseobj = rpcresponse.RPC_Response(program=PROGRAM)
+
+responseobj = rwfind_client.call(requestobj)
+if responseobj.get_retcode() == 0:
+    stdout_ = base64.b64decode(responseobj.get_stdout())
+    s = "Received reply from server --- " + \
+        "%d bytes; SHA1: %s" % \
+                (len(stdout_),
+                        hashlib.sha1(stdout_).hexdigest())
+    rwfind_client.logdebug(s)
+    sys.stdout.write(stdout_)
+else:
+    s = "Received error %s from server" % responseobj.get_retcode()
+    rwfind_client.loginfo(s)
+    sys.stderr.write(base64.b64decode(responseobj.get_stderr()))
+sys.exit(responseobj.get_retcode())

@@ -1,0 +1,85 @@
+#!/bin/bash
+#
+# Copyright (c) 2010-2017, David Dittrich <dave.dittrich@gmail.com>
+# All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+_USER=`whoami`
+_PIDFILE=rpc_server.pid
+_SERVER=$1
+_ACTION=$2
+_QUEUEBASE=$3
+_OPTIONS=$4
+
+_USAGE="usage: $0 SERVER {start|status|stop}"
+
+if [ "x${_SERVER}" == "x" -o "x${_ACTION}" == "x" ]; then
+	echo ${_USAGE}
+	exit 1
+fi
+
+function isalive() {
+	_out=$(ps auxwww | grep $1 | grep ${_SERVER})
+	if [ "x$_out" == "x" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+if [ "${_ACTION}" == "start" ]; then
+	if [ -f ${_PIDFILE} ]; then
+		if ( isalive `cat ${_PIDFILE}` ); then
+			echo "Server already running (PID ${_PID})"
+			exit 1
+		else
+			echo "PIDFILE ${_PIDFILE} exists, but can't find a process with PID ${_PID}"
+			exit 1
+		fi
+	fi
+	python ${_SERVER} --verbose --queue-base ${_QUEUEBASE} ${_OPTIONS} &
+	if [ $? -ne 0 ]; then
+		echo "Could not start ${_SERVER}"
+		exit 1
+	fi
+	echo $! > ${_PIDFILE}
+	echo "Server ${_SERVER} (queue base ${_QUEUEBASE}) has PID `cat ${_PIDFILE}`"
+	ps auxwww | grep `cat ${_PIDFILE}`
+elif [ "${_ACTION}" == "stop" -o "${_ACTION}" == "status" ]; then
+	if [ ! -f ${_PIDFILE} ]; then
+		echo "I don't see ${_PIDFILE}"
+		exit 1
+	fi
+	_PID=`cat ${_PIDFILE}`
+	if [ "x${_PID}" == "x" ]; then
+		echo "I don't see PID in ${_PIDFILE}"
+		exit 1
+	fi
+	if [ "${_ACTION}" == "stop" ]; then
+		echo "Stopping server (PID ${_PID})"
+		kill -TERM ${_PID}
+		rm ${_PIDFILE}
+	else
+		if ( isalive ${_PID} ); then
+			echo "Server is running (PID ${_PID})"
+		else
+			echo "I don't see any server running"
+			exit 1
+		fi
+	fi
+else
+	echo ${_USAGE}
+	exit 1
+fi	
+exit 0

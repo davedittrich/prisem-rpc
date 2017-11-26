@@ -1,0 +1,236 @@
+Here is what it looks like in action:
+
+1. First, I log in and update the source to the latest revision:
+
+dittrich@floyd:/usr/local/git/prisem/rpc$ sudo su - logmatrix
+[sudo] password for dittrich: 
+
+logmatrix@floyd:~$ cd git/prisem/rpc
+
+logmatrix@floyd:~/git/prisem/rpc$ git pull origin master
+remote: Counting objects: 12, done.
+remote: Compressing objects: 100% (7/7), done.
+remote: Total 7 (delta 5), reused 0 (delta 0)
+Unpacking objects: 100% (7/7), done.
+From raptor.cari.net:/opt/git/prisem
+ * branch            master     -> FETCH_HEAD
+Updating 65d4c51..04c38e8
+Fast-forward
+ rpc/Makefile           |   33 +++++++++-------------
+ rpc/rpc_anon_client.py |    4 +-
+ rpc/rpc_anon_server.py |   17 ++++++++++-
+ rpc/rpcserver          |   70 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 100 insertions(+), 24 deletions(-)
+ create mode 100755 rpc/rpcserver
+
+
+2. Then, I start the test server in the background. This will make its output show up on the screen mixed in with the output of the tests:
+
+logmatrix@floyd:~/git/prisem/rpc$ make start
+bash rpcserver rpc_anon_server.py start
+Server has PID 10105
+36001    10105  0.0  0.0  25452  4344 pts/4    D+   15:42   0:00 python rpc_anon_server.py --queue ipgrep-logmatrix --verbose
+
+logmatrix@floyd:~/git/prisem/rpc$ rpc_anon_server.py: Starting...
+Connecting to server raptor.cari.net, virtual host: /
+/usr/local/lib/python2.6/dist-packages/pika-0.9.14p0-py2.6.egg/pika/adapters/blocking_connection.py:797: DeprecationWarning: type is deprecated, use exchange_type instead
+  DeprecationWarning)
+Binding to queue 'ipgrep-logmatrix' on exchange rpc
+rpc_anon_server.py: Server waiting for RPC calls.
+
+The scripts now write their logs to the script name + ".log", like this:
+
+logmatrix@floyd:~/git/prisem/rpc$ ls -l *.log
+-rw-r--r-- 1 logmatrix logmatrix  67 2013-12-22 15:42 rpc_anon_server.py.log
+
+
+3. Now run "testa", then print out the results:
+
+logmatrix@floyd:~/git/prisem/rpc$ make testa
+python rpc_anon_client.py --queue ipgrep-logmatrix --stats --map ipgrep_networks_prisem.txt --file rwfind_201210011617_8428.txt > test.out
+Creating temporary map file: /tmp/tmpmMdeh0
+Running command "/usr/local/bin/ipgrep --context --anonymize --stats --networks /tmp/tmpmMdeh0"
+Output: 1658 bytes; SHA1: d60d98a6f51a655aafb15eadd0db94de5455496f
+Replying with: {"protocol_version": "0.5.5", "result": "[len(result)=1658;SHA1(result)=d60d98a6f51a655aafb15eadd0db94de5455496f]", "server_name": "RPC Server 0.5.5", "time": 1387755832.5194139}
+wc -c test.out
+1658 test.out
+sha1sum test.out
+d60d98a6f51a655aafb15eadd0db94de5455496f  test.out
+cat test.out
+rwfind -- Mon, 01 Oct 2012 16:26:37 -0700
+
+Found 12 flows over the last 30 days to/from the following:
+58.64.155.59
+58.64.155.57
+58.64.143.245
+58.64.158.111
+64.26.174.74
+134.255.242.47
+113.10.180.163
+113.10.103.170
+113.10.113.39
+
+            sIP|            dIP|sPort|dPort|pro|   packets|     bytes|                  sTime|      dur|
+  [___CTYSEA__]|   64.26.174.74| 1791|   80|  6|         7|       749|2012/09/01T07:39:36.352|   13.312|
+   64.26.174.74|  [___CTYSEA__]|   80| 1791|  6|         8|      4669|2012/09/01T07:39:36.481|   11.008|
+  [___CTYSEA__]|   64.26.174.74| 1791|   80|  6|         7|       749|2012/09/01T07:39:36.531|   13.248|
+ [___CTYSEA___]|   64.26.174.74| 3962|   80|  6|        13|      2425|2012/09/27T16:57:06.260|    1.344|
+ [___CTYSEA___]|   64.26.174.74| 3962|   80|  6|        13|      2425|2012/09/27T16:57:06.296|    1.408|
+   64.26.174.74| [___CTYSEA___]|   80| 3962|  6|        16|     14240|2012/09/27T16:57:06.325|    1.280|
+ [___CTYSEA___]|   64.26.174.74| 3963|   80|  6|        43|      4477|2012/09/27T16:57:06.836|    6.720|
+ [___CTYSEA___]|   64.26.174.74| 3963|   80|  6|        43|      4477|2012/09/27T16:57:06.874|    6.784|
+   64.26.174.74| [___CTYSEA___]|   80| 3963|  6|        88|    112225|2012/09/27T16:57:06.901|    6.656|
+ [___CTYSEA___]|   64.26.174.74| 3964|   80|  6|        24|      2200|2012/09/27T16:57:12.790|   19.200|
+ [___CTYSEA___]|   64.26.174.74| 3964|   80|  6|        24|      2200|2012/09/27T16:57:12.828|   19.200|
+   64.26.174.74| [___CTYSEA___]|   80| 3964|  6|        52|     64845|2012/09/27T16:57:12.855|   15.808|
+
+
+
+Site/host counts
+All_Sites: 2 (100.00%)
+CTYSEA: 2 (100.00%)
+
+
+5. Now run testb (I'm going to trim the results, since it is very large, but note the length and SHA1 hashes match):
+
+logmatrix@floyd:~/git/prisem/rpc$ make testb
+python rpc_anon_client.py --queue ipgrep-logmatrix --stats --map ipgrep_networks_prisem.txt --file rwfind_201302210110_18463.txt > test.out
+Creating temporary map file: /tmp/tmpcYJwWf
+Running command "/usr/local/bin/ipgrep --context --anonymize --stats --networks /tmp/tmpcYJwWf"
+Output: 783477 bytes; SHA1: d1c2b543c3e9baaff95dd371f3109d4c399027bb
+Replying with: {"protocol_version": "0.5.5", "result": "[len(result)=783477;SHA1(result)=d1c2b543c3e9baaff95dd371f3109d4c399027bb]", "server_name": "RPC Server 0.5.5", "time": 1387755900.993753}
+wc -c test.out
+783477 test.out
+sha1sum test.out
+d1c2b543c3e9baaff95dd371f3109d4c399027bb  test.out
+cat test.out
+rwfind -- Thu, 21 Feb 2013 02:19:24 -0800
+
+Found 7375 flows over the last 180 days to/from the following:
+107.6.38.55
+108.171.207.62
+108.171.244.138
+108.171.246.87
+[...]
+
+
+6. Now run testc (the one I did on the telecon last Tuesday) and cat it out. Note that this runs the "cif" command line tool, which is configured in the logmatrix account on Floyd:
+
+logmatrix@floyd:~/git/prisem/rpc$ make testc
+cif -s medium -c 65 -n -q infrastructure/malware > malware.txt
+head -n 15 malware.txt
+
+Query: infrastructure/malware
+Feed Group ID: everyone
+Feed Id: e02bf593-5674-5bd6-87cc-b0d32f23f5f3
+Feed Restriction: RED
+Feed Created: 2013-12-13T22:45:02Z
+
+restriction|guid    |severity|confidence|detecttime          |address        |protocol|portlist|asn                                                                                  |prefix          |rir    |cc|impact                |description                                                        |alternativeid_restriction|alternativeid                                      
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|1.221.17.228   |6       |80,443  |3786 LGDACOM LG DACOM Corporation                                                    |1.208.0.0/12    |apnic  |KR|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=1.221.17.228   
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|41.67.53.141   |6       |80,443  |37197 SUDREN                                                                         |41.67.0.0/18    |afrinic|SD|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=41.67.53.141   
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|50.97.148.210  |6       |80,443  |36351 SOFTLAYER SoftLayer Technologies Inc.                                          |50.97.128.0/18  |arin   |US|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=50.97.148.210  
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|58.241.10.22   |6       |80,443  |4837 CHINA169-BACKBONE CNCGROUP China169 Backbone                                    |58.240.0.0/15   |apnic  |CN|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=58.241.10.22   
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|61.67.219.174  |6       |80,443  |18042 KBT Koos Broadband Telecom                                                     |61.67.128.0/17  |apnic  |TW|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=61.67.219.174  
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|64.199.111.26  |6       |80,443  |1785 AS-PAETEC-NET PaeTec Communications, Inc.                                       |64.199.96.0/19  |arin   |US|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=64.199.111.26  
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|70.167.157.83  |6       |80,443  |22773 ASN-CXA-ALL-CCI-22773-RDC Cox Communications Inc.                              |70.167.152.0/21 |arin   |US|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=70.167.157.83  
+ipgrep -v -l malware.txt | grep "^[0-9]" > malware_ips.txt
+head -n 5 malware_ips.txt
+1.221.17.228
+41.67.53.141
+50.97.148.210
+58.241.10.22
+61.67.219.174
+cut -s -d '|' -f 10,11 malware.txt | grep -v "prefix" | awk -F\| '{print $1 FS $2 FS $2;}' | sed 's/ *//g' > mapfile.txt
+head -n 5 mapfile.txt
+1.208.0.0/12|apnic|apnic
+41.67.0.0/18|afrinic|afrinic
+50.97.128.0/18|arin|arin
+58.240.0.0/15|apnic|apnic
+61.67.128.0/17|apnic|apnic
+python rpc_anon_client.py --queue ipgrep-logmatrix --stats --map mapfile.txt --file malware_ips.txt > test.out
+Creating temporary map file: /tmp/tmpXtoAxV
+Running command "/usr/local/bin/ipgrep --context --anonymize --stats --networks /tmp/tmpXtoAxV"
+Output: 982 bytes; SHA1: 8255faf52b0176e7c1b31163822db17756c6178d
+Replying with: {"protocol_version": "0.5.5", "result": "[len(result)=982;SHA1(result)=8255faf52b0176e7c1b31163822db17756c6178d]", "server_name": "RPC Server 0.5.5", "time": 1387748720.788167}
+wc -c test.out
+982 test.out
+sha1sum test.out
+8255faf52b0176e7c1b31163822db17756c6178d  test.out
+
+[___ripencc__]
+[__ripencc__]
+[__ripencc__]
+[__ripencc__]
+[___apnic___]
+[____apnic___]
+[___apnic___]
+[___apnic___]
+[____apnic___]
+[____apnic___]
+[____apnic____]
+[____apnic____]
+[____apnic___]
+[____apnic___]
+[___apnic___]
+[___apnic___]
+[____apnic____]
+[____apnic___]
+[____apnic____]
+[____apnic____]
+[____arin___]
+[___ripencc___]
+[___ripencc__]
+[___ripencc__]
+[___ripencc__]
+[___ripencc__]
+[___apnic__]
+[____apnic___]
+[____apnic____]
+[___lacnic___]
+[__ripencc_]
+[___lacnic__]
+[___lacnic___]
+[____arin____]
+[____lacnic___]
+[____apnic___]
+[____apnic___]
+[____apnic____]
+[____apnic___]
+[____apnic____]
+[___apnic___]
+[___apnic___]
+[___apnic__]
+[____apnic___]
+[__ripencc__]
+[__ripencc__]
+[___ripencc___]
+[____arin____]
+[__apnic__]
+
+
+Site/host counts
+apnic: 32 (55.17%)
+ripencc: 14 (24.14%)
+All_Sites: 58 (100.00%)
+lacnic: 4 (6.90%)
+afrinic: 1 (1.72%)
+arin: 7 (12.07%)
+
+8. Clean up after ourselves (which also kills the server).
+
+logmatrix@floyd:~/git/prisem/rpc$ make clean
+bash rpcserver rpc_anon_server.py stop
+Stopping server (PID 10105)
+rm -f *.log *.pyc
+rm -f mapfile.txt malware.txt malware_ips.txt test.out
+find . -name '*.pyc' -exec rm {} ';'
+
+9. Verify that nothing is left over:
+
+logmatrix@floyd:~/git/prisem/rpc$ git status
+# On branch master
+# Your branch is ahead of 'origin/master' by 10 commits.
+#
+nothing to commit (working directory clean)
+

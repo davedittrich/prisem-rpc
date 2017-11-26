@@ -1,0 +1,567 @@
+README.rd
+=========
+
+This file contains notes for PRISEM developers.
+
+Pre-requisite information
+-------------------------
+
+It is assumed the reader is familiar with the "ipgrep" utility, described in
+the PRISEM Analyst's Handbook (especially section 5.1, which shows --help
+output of this program and examples of how to use it.)
+
+It is also assumed the reader is familiar with RabbitMQ, which is used for
+messaging between the RPC client and server (and will later serve as
+distribution mechanism for files that are shared across PRISEM systems and must
+be maintained in sync for consistent results, such as whitelists, watchlists,
+configuration files, and monitoring the systems for resource exhaustion).
+
+See:
+
+http://www.rabbitmq.com/getstarted.html
+http://www.laurentluce.com/posts/distributed-messaging-using-rabbitmq-and-python/
+http://blogs.vmware.com/vfabric/2013/04/how-instagram-feeds-work-celery-and-rabbitmq.html
+http://spring.io/blog/2011/04/01/routing-topologies-for-performance-and-scalability-with-rabbitmq/
+http://stackoverflow.com/questions/2388539/in-which-domains-are-message-oriented-middleware-like-amqp-useful
+http://www.ibm.com/developerworks/cloud/library/cl-optimizepythoncloud2/index.html
+
+The above examples are for Python, but AMQP libraries exist for multiple other
+programming languages. Ask Google or Bing to show you were they exist.
+
+
+RPC client and server
+---------------------
+
+A functional RPC client (rpc_anon_client.py) and server (rpc_anon_server.py)
+were written to remotely invoke the "ipgrep" utility on a given text file. A
+map file that associates IP CIDR blocks and identifiers for use in matching
+and/or anonymizing data can be passed along with the data to be processed. The
+client writes the results to standard output.
+
+The client has --help and --usage output to self-document its use. Included
+is an example command message:
+
+----------------------------------------------------------------------------------
+$ python rpc_anon_client.py --help
+Usage: rpc_anon_client.py [options]
+
+Options:
+  -h, --help            show this help message and exit
+  -d, --debug           Turn on debugging mode.
+  -e EXCHANGE, --exchange=EXCHANGE
+                        Exchange to use (default: 'rpc')
+  -m MAPFILE, --map=MAPFILE
+                        Mapping file.
+  -r FILE, --file=FILE  File to be anonymized.
+  -u, --usage           Print usage information.
+  -v, --verbose         Be verbose (on stdout) about what is happening.
+dittrich@27b-6:rpc:530$ python rpc_anon_client.py --usage
+
+usage: %(sys.argv[0])s [options] [args]
+
+The following is output using the --verbose option:
+
+RPC command message: {"protocol_version": "1.0.0", "client_name": "RPC Client 1.0.0",
+"command": {"data": "cndmaW5kIC0tIE1vbiwgMDEgT2N0IDIwMTIgMTY6MjY6MzcgLTA3MDAKCkZ
+vdW5kIDEyIGZsb3dzIG92ZXIgdGhlIGxhc3QgMzAgZGF5cyB0by9mcm9tIHRoZSBmb2xsb3dpbmc6CjU
+[ ... many lines deleted ...]
+uNzR8IDE1Ni43NC4xNTcuMTU3fCAgIDgwfCAzOTY0fCAgNnwgICAgICAgIDUyfCAgICAgNjQ4NDV8MjA
+xMi8wOS8yN1QxNjo1NzoxMi44NTV8ICAgMTUuODA4fAoK", "program": "ipgrep_anon",
+"endtime": "0", "starttime": "0"}, "time": 1386914829}
+
+Client sent 'ipgrep' RPC call.
+Waiting for reply.
+RPC Reply from server --- 
+rwfind -- Mon, 01 Oct 2012 16:26:37 -0700
+
+Found 12 flows over the last 30 days to/from the following:
+58.64.155.59
+58.64.155.57
+58.64.143.245
+58.64.158.111
+64.26.174.74
+134.255.242.47
+113.10.180.163
+113.10.103.170
+113.10.113.39
+
+            sIP|            dIP|sPort|dPort|pro|   packets|     bytes|                  sTime|      dur|
+  [___CTYSEA__]|   64.26.174.74| 1791|   80|  6|         7|       749|2012/09/01T07:39:36.352|   13.312|
+   64.26.174.74|  [___CTYSEA__]|   80| 1791|  6|         8|      4669|2012/09/01T07:39:36.481|   11.008|
+  [___CTYSEA__]|   64.26.174.74| 1791|   80|  6|         7|       749|2012/09/01T07:39:36.531|   13.248|
+ [___CTYSEA___]|   64.26.174.74| 3962|   80|  6|        13|      2425|2012/09/27T16:57:06.260|    1.344|
+ [___CTYSEA___]|   64.26.174.74| 3962|   80|  6|        13|      2425|2012/09/27T16:57:06.296|    1.408|
+   64.26.174.74| [___CTYSEA___]|   80| 3962|  6|        16|     14240|2012/09/27T16:57:06.325|    1.280|
+ [___CTYSEA___]|   64.26.174.74| 3963|   80|  6|        43|      4477|2012/09/27T16:57:06.836|    6.720|
+ [___CTYSEA___]|   64.26.174.74| 3963|   80|  6|        43|      4477|2012/09/27T16:57:06.874|    6.784|
+   64.26.174.74| [___CTYSEA___]|   80| 3963|  6|        88|    112225|2012/09/27T16:57:06.901|    6.656|
+ [___CTYSEA___]|   64.26.174.74| 3964|   80|  6|        24|      2200|2012/09/27T16:57:12.790|   19.200|
+ [___CTYSEA___]|   64.26.174.74| 3964|   80|  6|        24|      2200|2012/09/27T16:57:12.828|   19.200|
+   64.26.174.74| [___CTYSEA___]|   80| 3964|  6|        52|     64845|2012/09/27T16:57:12.855|   15.808|
+
+[...]
+----------------------------------------------------------------------------------
+
+
+
+Example with map file
+---------------------
+
+To create a test map file, a feed of "infrastructure/malware" was
+pulled from CIF:
+
+----------------------------------------------------------------------------------
+$ cif -n -q infrastructure/malware > malware.txt
+----------------------------------------------------------------------------------
+
+The contents of this file look like this:
+
+----------------------------------------------------------------------------------
+Query: infrastructure/malware
+Feed Group ID: everyone
+Feed Id: 622a7426-01b9-508c-8414-c61597d083a2
+Feed Restriction: RED
+Feed Created: 2013-12-13T22:45:02Z
+
+restriction|guid    |severity|confidence|detecttime          |address        |protocol|portlist|asn                                                                                  |prefix          |rir    |cc|impact                |description                                                        |alternativeid_restriction|alternativeid                                      
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|1.221.17.228   |6       |80,443  |3786 LGDACOM LG DACOM Corporation                                                    |1.208.0.0/12    |apnic  |KR|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=1.221.17.228   
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|41.67.53.141   |6       |80,443  |37197 SUDREN                                                                         |41.67.0.0/18    |afrinic|SD|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=41.67.53.141   
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|50.97.148.210  |6       |80,443  |36351 SOFTLAYER SoftLayer Technologies Inc.                                          |50.97.128.0/18  |arin   |US|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=50.97.148.210  
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|58.241.10.22   |6       |80,443  |4837 CHINA169-BACKBONE CNCGROUP China169 Backbone                                    |58.240.0.0/15   |apnic  |CN|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=58.241.10.22   
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|61.67.219.174  |6       |80,443  |18042 KBT Koos Broadband Telecom                                                     |61.67.128.0/17  |apnic  |TW|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=61.67.219.174  
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|64.199.111.26  |6       |80,443  |1785 AS-PAETEC-NET PaeTec Communications, Inc.                                       |64.199.96.0/19  |arin   |US|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=64.199.111.26  
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|70.167.157.83  |6       |80,443  |22773 ASN-CXA-ALL-CCI-22773-RDC Cox Communications Inc.                              |70.167.152.0/21 |arin   |US|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=70.167.157.83  
+----------------------------------------------------------------------------------
+
+
+Using "ipgrep", this file can be converted to a list of just the IP
+addresses like this:
+
+----------------------------------------------------------------------------------
+$ ipgrep -v -l malware.txt | grep "^[0-9]" | > malware_ips.txt
+$ head -n 5 malware_ips.txt
+1.221.17.228
+41.67.53.141
+50.97.148.210
+58.241.10.22
+61.67.219.174
+----------------------------------------------------------------------------------
+
+
+Since CIF has already identified the CIDR blocks for various feeds it
+has consumed, a file that maps IP addresses to the RIR registrar can
+can be produced from the CIF output as follows:
+
+----------------------------------------------------------------------------------
+$ cut -s -d '|' -f 10,11 malware.txt | grep -v "prefix" | awk -F\|
+> '{print $1 FS $2 FS $2;}' | sed 's/ *//g' > mapfile.txt
+$ head -n 5 mapfile.txt
+1.208.0.0/12|apnic|apnic
+41.67.0.0/18|afrinic|afrinic
+50.97.128.0/18|arin|arin
+58.240.0.0/15|apnic|apnic
+61.67.128.0/17|apnic|apnic
+----------------------------------------------------------------------------------
+
+
+This map file can now be used to process the list of IP addresses,
+replacing each address with its RIR identifier. This, in and of
+itself, is not very useful, but it illustrates how "ipgrep" can be
+used to associated metadata (in this case the RIR values) with the IP
+addresses found in text reports. Some creative programming is required
+to fully utilize this technique, but the capability exists with
+"ipgrep" to do things like this very quickly and easily.
+
+The Makefile has rules to facilitate performing these steps. Assuming
+a server is already running (see target "server2" in Makefile), you
+can pull the CIF feed using the target "map") and see how it is
+processed by the RPC client and server using the target "test2"
+as follows:
+
+----------------------------------------------------------------------------------
+$ make map
+cif -n -q infrastructure/malware > malware.txt
+head -n 15 malware.txt
+
+Query: infrastructure/malware
+Feed Group ID: everyone
+Feed Id: 622a7426-01b9-508c-8414-c61597d083a2
+Feed Restriction: RED
+Feed Created: 2013-12-13T22:45:02Z
+
+restriction|guid    |severity|confidence|detecttime          |address        |protocol|portlist|asn                                                                                  |prefix          |rir    |cc|impact                |description                                                        |alternativeid_restriction|alternativeid                                      
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|1.221.17.228   |6       |80,443  |3786 LGDACOM LG DACOM Corporation                                                    |1.208.0.0/12    |apnic  |KR|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=1.221.17.228   
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|41.67.53.141   |6       |80,443  |37197 SUDREN                                                                         |41.67.0.0/18    |afrinic|SD|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=41.67.53.141   
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|50.97.148.210  |6       |80,443  |36351 SOFTLAYER SoftLayer Technologies Inc.                                          |50.97.128.0/18  |arin   |US|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=50.97.148.210  
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|58.241.10.22   |6       |80,443  |4837 CHINA169-BACKBONE CNCGROUP China169 Backbone                                    |58.240.0.0/15   |apnic  |CN|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=58.241.10.22   
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|61.67.219.174  |6       |80,443  |18042 KBT Koos Broadband Telecom                                                     |61.67.128.0/17  |apnic  |TW|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=61.67.219.174  
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|64.199.111.26  |6       |80,443  |1785 AS-PAETEC-NET PaeTec Communications, Inc.                                       |64.199.96.0/19  |arin   |US|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=64.199.111.26  
+AMBER      |everyone|medium  |95        |2013-12-12T00:00:00Z|70.167.157.83  |6       |80,443  |22773 ASN-CXA-ALL-CCI-22773-RDC Cox Communications Inc.                              |70.167.152.0/21 |arin   |US|malware infrastructure|cbl + customised njabl. 3rd party exploits (proxies, trojans, etc.)|GREEN                    |http://www.spamhaus.org/query/bl?ip=70.167.157.83  
+ipgrep -v -l malware.txt | grep "^[0-9]" > malware_ips.txt
+head -n 5 malware_ips.txt
+1.221.17.228
+41.67.53.141
+50.97.148.210
+58.241.10.22
+61.67.219.174
+cut -s -d '|' -f 10,11 malware.txt | grep -v "prefix" | awk -F\| '{print $1 FS $2 FS $2;}' | sed 's/ *//g' > mapfile.txt
+head -n 5 mapfile.txt
+1.208.0.0/12|apnic|apnic
+41.67.0.0/18|afrinic|afrinic
+50.97.128.0/18|arin|arin
+58.240.0.0/15|apnic|apnic
+61.67.128.0/17|apnic|apnic
+----------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------
+$ make test2
+cp /dev/null rpc_client.log
+python rpc_anon_client.py -e rpc-test --verbose --debug --map mapfile.txt --file malware_ips.txt
+Using map file:
+1.208.0.0/12|apnic|apnic
+41.67.0.0/18|afrinic|afrinic
+50.97.128.0/18|arin|arin
+58.240.0.0/15|apnic|apnic
+61.67.128.0/17|apnic|apnic
+64.199.96.0/19|arin|arin
+70.167.152.0/21|arin|arin
+74.93.128.0/19|arin|arin
+78.111.80.0/20|ripencc|ripencc
+82.221.96.0/19|ripencc|ripencc
+85.17.0.0/16|ripencc|ripencc
+88.26.0.0/16|ripencc|ripencc
+94.102.48.0/20|ripencc|ripencc
+110.172.52.0/24|apnic|apnic
+112.176.0.0/12|apnic|apnic
+114.80.0.0/17|apnic|apnic
+115.84.64.0/18|apnic|apnic
+115.182.48.0/20|apnic|apnic
+115.239.224.0/19|apnic|apnic
+115.249.0.0/16|apnic|apnic
+116.255.128.0/17|apnic|apnic
+117.79.88.0/21|apnic|apnic
+119.48.0.0/13|apnic|apnic
+119.254.224.0/20|apnic|apnic
+121.207.252.0/24|apnic|apnic
+123.232.0.0/14|apnic|apnic
+125.140.64.0/18|apnic|apnic
+128.252.0.0/16|arin|arin
+176.31.0.0/16|ripencc|ripencc
+176.223.119.0/24|ripencc|ripencc
+183.60.16.0/21|apnic|apnic
+183.60.240.0/20|apnic|apnic
+183.128.0.0/11|apnic|apnic
+186.225.48.0/20|lacnic|lacnic
+189.45.192.0/20|lacnic|lacnic
+189.107.160.0/19|lacnic|lacnic
+199.245.52.0/22|arin|arin
+201.203.96.0/20|lacnic|lacnic
+202.85.216.0/21|apnic|apnic
+202.101.192.0/18|apnic|apnic
+202.166.192.0/20|apnic|apnic
+203.171.224.0/20|apnic|apnic
+210.21.110.0/23|apnic|apnic
+210.51.8.0/21|apnic|apnic
+210.57.210.0/24|apnic|apnic
+211.157.128.0/18|apnic|apnic
+212.36.64.0/19|ripencc|ripencc
+212.68.34.0/24|ripencc|ripencc
+212.116.128.0/19|ripencc|ripencc
+216.245.192.0/19|arin|arin
+221.12.0.0/17|apnic|apnic
+RPC command message: {"protocol_version": "1.0.0", "client_name": "RPC Client 1.0.0"
+, "command": {"map": "MS4yMDguMC4wLzEyfGFwbmljfGFwbmljCjQxLjY3LjAuMC8xOHxhZnJpbm
+ljfGFmcmluaWMKNTAuOTcuMTI4LjAvMTh8YXJpbnxhcmluCjU4LjI0MC4wLjAvMTV8YXBuaWN8YXBuaW
+MKNjEuNjcuMTI4LjAvMTd8YXBuaWN8YXBuaWMKNjQuMTk5Ljk2LjAvMTl8YXJpbnxhcmluCjcwLjE2Ny
+4xNTIuMC8yMXxhcmlufGFyaW4KNzQuOTMuMTI4LjAvMTl8YXJpbnxhcmluCjc4LjExMS44MC4wLzIwfH
+JpcGVuY2N8cmlwZW5jYwo4Mi4yMjEuOTYuMC8xOXxyaXBlbmNjfHJpcGVuY2MKODUuMTcuMC4wLzE2fH
+JpcGVuY2N8cmlwZW5jYwo4OC4yNi4wLjAvMTZ8cmlwZW5jY3xyaXBlbmNjCjk0LjEwMi40OC4wLzIwfH
+JpcGVuY2N8cmlwZW5jYwoxMTAuMTcyLjUyLjAvMjR8YXBuaWN8YXBuaWMKMTEyLjE3Ni4wLjAvMTJ8YX
+BuaWN8YXBuaWMKMTE0LjgwLjAuMC8xN3xhcG5pY3xhcG5pYwoxMTUuODQuNjQuMC8xOHxhcG5pY3xhcG
+5pYwoxMTUuMTgyLjQ4LjAvMjB8YXBuaWN8YXBuaWMKMTE1LjIzOS4yMjQuMC8xOXxhcG5pY3xhcG5pYw
+oxMTUuMjQ5LjAuMC8xNnxhcG5pY3xhcG5pYwoxMTYuMjU1LjEyOC4wLzE3fGFwbmljfGFwbmljCjExNy
+43OS44OC4wLzIxfGFwbmljfGFwbmljCjExOS40OC4wLjAvMTN8YXBuaWN8YXBuaWMKMTE5LjI1NC4yMj
+QuMC8yMHxhcG5pY3xhcG5pYwoxMjEuMjA3LjI1Mi4wLzI0fGFwbmljfGFwbmljCjEyMy4yMzIuMC4wLz
+E0fGFwbmljfGFwbmljCjEyNS4xNDAuNjQuMC8xOHxhcG5pY3xhcG5pYwoxMjguMjUyLjAuMC8xNnxhcm
+lufGFyaW4KMTc2LjMxLjAuMC8xNnxyaXBlbmNjfHJpcGVuY2MKMTc2LjIyMy4xMTkuMC8yNHxyaXBlbm
+NjfHJpcGVuY2MKMTgzLjYwLjE2LjAvMjF8YXBuaWN8YXBuaWMKMTgzLjYwLjI0MC4wLzIwfGFwbmljfG
+FwbmljCjE4My4xMjguMC4wLzExfGFwbmljfGFwbmljCjE4Ni4yMjUuNDguMC8yMHxsYWNuaWN8bGFjbm
+ljCjE4OS40NS4xOTIuMC8yMHxsYWNuaWN8bGFjbmljCjE4OS4xMDcuMTYwLjAvMTl8bGFjbmljfGxhY2
+5pYwoxOTkuMjQ1LjUyLjAvMjJ8YXJpbnxhcmluCjIwMS4yMDMuOTYuMC8yMHxsYWNuaWN8bGFjbmljCj
+IwMi44NS4yMTYuMC8yMXxhcG5pY3xhcG5pYwoyMDIuMTAxLjE5Mi4wLzE4fGFwbmljfGFwbmljCjIwMi
+4xNjYuMTkyLjAvMjB8YXBuaWN8YXBuaWMKMjAzLjE3MS4yMjQuMC8yMHxhcG5pY3xhcG5pYwoyMTAuMj
+EuMTEwLjAvMjN8YXBuaWN8YXBuaWMKMjEwLjUxLjguMC8yMXxhcG5pY3xhcG5pYwoyMTAuNTcuMjEwLj
+AvMjR8YXBuaWN8YXBuaWMKMjExLjE1Ny4xMjguMC8xOHxhcG5pY3xhcG5pYwoyMTIuMzYuNjQuMC8xOX
+xyaXBlbmNjfHJpcGVuY2MKMjEyLjY4LjM0LjAvMjR8cmlwZW5jY3xyaXBlbmNjCjIxMi4xMTYuMTI4Lj
+AvMTl8cmlwZW5jY3xyaXBlbmNjCjIxNi4yNDUuMTkyLjAvMTl8YXJpbnxhcmluCjIyMS4xMi4wLjAvMT
+d8YXBuaWN8YXBuaWMK", "program": "ipgrep_anon", "endtime": "0", "starttime": "0",
+ "data": "MS4yMjEuMTcuMjI4CjQxLjY3LjUzLjE0MQo1MC45Ny4xNDguMjEwCjU4LjI0MS4xMC4yMg
+o2MS42Ny4yMTkuMTc0CjY0LjE5OS4xMTEuMjYKNzAuMTY3LjE1Ny44Mwo3NC45My4xNDYuMTcKNzguMT
+ExLjkzLjEwNwo4Mi4yMjEuMTAyLjE4Mgo4NS4xNy4xNTUuMTk2Cjg4LjI2LjIzMy4xMTUKOTQuMTAyLj
+U5LjE4NgoxMTAuMTcyLjUyLjM0CjExMi4xODQuOTEuMTA3CjExNC44MC4xMDAuNzkKMTE1Ljg0LjEwMS
+43OAoxMTUuMTgyLjYyLjIwOAoxMTUuMjM5LjI1My4xMQoxMTUuMjQ5LjE3MC4xOTQKMTE2LjI1NS4yMD
+IuMjQzCjExNy43OS45MS4xOTUKMTE5LjUyLjI1NC4yMAoxMTkuMjU0LjIzMC4xNzEKMTIxLjIwNy4yNT
+IuMzgKMTIzLjIzMi4xMjIuMTYyCjEyNS4xNDAuMTE0LjIxNQoxMjguMjUyLjE4MS45CjE3Ni4zMS4yNT
+UuMTM4CjE3Ni4yMjMuMTE5LjUwCjE4My42MC4yMC4zNQoxODMuNjAuMjQzLjE5MAoxODMuMTI5LjEzMC
+4yMjcKMTg2LjIyNS41My4xODYKMTg5LjQ1LjIwMS4xMQoxODkuMTA3LjE3NS4xMAoxOTkuMjQ1LjUyLj
+EwMAoyMDEuMjAzLjExMC4xNzgKMjAyLjg1LjIyMS4xNTMKMjAyLjEwMS4yMzMuNjcKMjAyLjE2Ni4xOT
+kuNzQKMjAzLjE3MS4yMjkuMTg0CjIxMC4yMS4xMTAuNTQKMjEwLjUxLjEwLjE1OAoyMTAuNTcuMjEwLj
+cKMjExLjE1Ny4xNDIuMjgKMjEyLjM2LjY1LjEwNgoyMTIuNjguMzQuMTcwCjIxMi4xMTYuMTU5LjE0Ng
+oyMTYuMjQ1LjIyMC41MwoyMjEuMTIuMTIuMwo="}, "time": 1387166364}
+Client sent 'ipgrep' RPC call.
+Waiting for reply.
+RPC Reply from server --- 
+[___apnic__]
+[__afrinic_]
+[____arin___]
+[___apnic__]
+[___apnic___]
+[____arin___]
+[____arin___]
+[___arin___]
+[__ripencc__]
+[___ripencc__]
+[__ripencc__]
+[__ripencc__]
+[__ripencc__]
+[___apnic___]
+[____apnic___]
+[___apnic___]
+[___apnic___]
+[____apnic___]
+[____apnic___]
+[____apnic____]
+[____apnic____]
+[___apnic___]
+[___apnic___]
+[____apnic____]
+[____apnic___]
+[____apnic____]
+[____apnic____]
+[____arin___]
+[___ripencc__]
+[___ripencc__]
+[___apnic__]
+[____apnic___]
+[____apnic____]
+[___lacnic___]
+[___lacnic__]
+[___lacnic___]
+[____arin____]
+[____lacnic___]
+[____apnic___]
+[____apnic___]
+[____apnic___]
+[____apnic____]
+[___apnic___]
+[___apnic___]
+[___apnic__]
+[____apnic___]
+[__ripencc__]
+[__ripencc__]
+[___ripencc___]
+[____arin____]
+[__apnic__]
+
+[___apnic__]
+[__afrinic_]
+[____arin___]
+[___apnic__]
+[___apnic___]
+[____arin___]
+[____arin___]
+[___arin___]
+[__ripencc__]
+[___ripencc__]
+[__ripencc__]
+[__ripencc__]
+[__ripencc__]
+[___apnic___]
+[____apnic___]
+[___apnic___]
+[___apnic___]
+[____apnic___]
+[____apnic___]
+[____apnic____]
+[____apnic____]
+[___apnic___]
+[___apnic___]
+[____apnic____]
+[____apnic___]
+[____apnic____]
+[____apnic____]
+[____arin___]
+[___ripencc__]
+[___ripencc__]
+[___apnic__]
+[____apnic___]
+[____apnic____]
+[___lacnic___]
+[___lacnic__]
+[___lacnic___]
+[____arin____]
+[____lacnic___]
+[____apnic___]
+[____apnic___]
+[____apnic___]
+[____apnic____]
+[___apnic___]
+[___apnic___]
+[___apnic__]
+[____apnic___]
+[__ripencc__]
+[__ripencc__]
+[___ripencc___]
+[____arin____]
+[__apnic__]
+
+Site/host counts
+apnic: 29 (56.86%)
+ripencc: 10 (19.61%)
+All_Sites: 51 (100.00%)
+lacnic: 4 (7.84%)
+afrinic: 1 (1.96%)
+arin: 7 (13.73%)
+
+cat rpc_client.log
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingConnection._on_con
+nection_error of <pika.adapters.blocking_connection.BlockingConnection object at
+ 0x1022f8750>>, 'only': None, 'one_shot': False, 'arguments': None}
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingConnection._on_con
+nection_start of <pika.adapters.blocking_connection.BlockingConnection object at
+ 0x1022f8750>>, 'only': None, 'one_shot': True, 'arguments': None, 'calls': 1}
+INFO:pika.adapters.base_connection:Connecting to 71.6.167.166:5672
+DEBUG:pika.callback:Processing 0:Connection.Start
+DEBUG:pika.callback:Processing use of oneshot callback
+DEBUG:pika.callback:0 registered uses left
+DEBUG:pika.callback:Removing callback #0: {'callback': <bound method BlockingCon
+nection._on_connection_start of <pika.adapters.blocking_connection.BlockingConne
+ction object at 0x1022f8750>>, 'only': None, 'one_shot': True, 'arguments': None
+, 'calls': 0}
+DEBUG:pika.callback:Calling <bound method BlockingConnection._on_connection_star
+t of <pika.adapters.blocking_connection.BlockingConnection object at 0x1022f8750
+>> for "0:Connection.Start"
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingConnection._on_con
+nection_tune of <pika.adapters.blocking_connection.BlockingConnection object at 
+0x1022f8750>>, 'only': None, 'one_shot': True, 'arguments': None, 'calls': 1}
+DEBUG:pika.callback:Processing 0:Connection.Tune
+DEBUG:pika.callback:Processing use of oneshot callback
+DEBUG:pika.callback:0 registered uses left
+DEBUG:pika.callback:Removing callback #0: {'callback': <bound method BlockingCon
+nection._on_connection_tune of <pika.adapters.blocking_connection.BlockingConnec
+tion object at 0x1022f8750>>, 'only': None, 'one_shot': True, 'arguments': None,
+ 'calls': 0}
+DEBUG:pika.callback:Calling <bound method BlockingConnection._on_connection_tune
+ of <pika.adapters.blocking_connection.BlockingConnection object at 0x1022f8750>
+> for "0:Connection.Tune"
+DEBUG:pika.connection:Creating a HeartbeatChecker: 600
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingConnection._on_con
+nection_open of <pika.adapters.blocking_connection.BlockingConnection object at 
+0x1022f8750>>, 'only': None, 'one_shot': True, 'arguments': None, 'calls': 1}
+DEBUG:pika.callback:Processing 0:Connection.OpenOk
+DEBUG:pika.callback:Processing use of oneshot callback
+DEBUG:pika.callback:0 registered uses left
+DEBUG:pika.callback:Removing callback #0: {'callback': <bound method BlockingCon
+nection._on_connection_open of <pika.adapters.blocking_connection.BlockingConnec
+tion object at 0x1022f8750>>, 'only': None, 'one_shot': True, 'arguments': None,
+ 'calls': 0}
+DEBUG:pika.callback:Calling <bound method BlockingConnection._on_connection_open
+ of <pika.adapters.blocking_connection.BlockingConnection object at 0x1022f8750>
+> for "0:Connection.OpenOk"
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingConnection._on_con
+nection_closed of <pika.adapters.blocking_connection.BlockingConnection object a
+t 0x1022f8750>>, 'only': None, 'one_shot': True, 'arguments': None, 'calls': 1}
+DEBUG:pika.adapters.blocking_connection:Opening channel 1
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingChannel._on_close 
+of <pika.adapters.blocking_connection.BlockingChannel object at 0x1016cf7d0>>, '
+only': None, 'one_shot': True, 'arguments': None, 'calls': 1}
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingChannel._on_getemp
+ty of <pika.adapters.blocking_connection.BlockingChannel object at 0x1016cf7d0>>
+, 'only': None, 'one_shot': False, 'arguments': None}
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingChannel._on_cancel
+ of <pika.adapters.blocking_connection.BlockingChannel object at 0x1016cf7d0>>, 
+'only': None, 'one_shot': False, 'arguments': None}
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingChannel._on_rpc_co
+mplete of <pika.adapters.blocking_connection.BlockingChannel object at 0x1016cf7
+d0>>, 'only': None, 'one_shot': True, 'arguments': None, 'calls': 1}
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingChannel._on_rpc_co
+mplete of <pika.adapters.blocking_connection.BlockingChannel object at 0x1016cf7
+d0>>, 'only': None, 'one_shot': True, 'arguments': None, 'calls': 1}
+DEBUG:pika.callback:Processing 1:Channel.OpenOk
+DEBUG:pika.callback:Processing use of oneshot callback
+DEBUG:pika.callback:0 registered uses left
+DEBUG:pika.callback:Removing callback #0: {'callback': <bound method BlockingCha
+nnel._on_rpc_complete of <pika.adapters.blocking_connection.BlockingChannel obje
+ct at 0x1016cf7d0>>, 'only': None, 'one_shot': True, 'arguments': None, 'calls':
+ 0}
+DEBUG:pika.callback:Calling <bound method BlockingChannel._on_rpc_complete of <p
+ika.adapters.blocking_connection.BlockingChannel object at 0x1016cf7d0>> for "1:
+Channel.OpenOk"
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingChannel._on_rpc_co
+mplete of <pika.adapters.blocking_connection.BlockingChannel object at 0x1016cf7
+d0>>, 'only': None, 'one_shot': True, 'arguments': None, 'calls': 1}
+DEBUG:pika.callback:Processing 1:Queue.DeclareOk
+DEBUG:pika.callback:Processing use of oneshot callback
+DEBUG:pika.callback:0 registered uses left
+DEBUG:pika.callback:Removing callback #0: {'callback': <bound method BlockingCha
+nnel._on_rpc_complete of <pika.adapters.blocking_connection.BlockingChannel obje
+ct at 0x1016cf7d0>>, 'only': None, 'one_shot': True, 'arguments': None, 'calls':
+ 0}
+DEBUG:pika.callback:Calling <bound method BlockingChannel._on_rpc_complete of <p
+ika.adapters.blocking_connection.BlockingChannel object at 0x1016cf7d0>> for "1:
+Queue.DeclareOk"
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingChannel._on_rpc_co
+mplete of <pika.adapters.blocking_connection.BlockingChannel object at 0x1016cf7
+d0>>, 'only': None, 'one_shot': True, 'arguments': {'consumer_tag': 'amq.gen-lAw
+NJbByTWke9V_C_7y12g'}, 'calls': 1}
+DEBUG:pika.callback:Processing 1:Basic.ConsumeOk
+DEBUG:pika.callback:Processing use of oneshot callback
+DEBUG:pika.callback:0 registered uses left
+DEBUG:pika.callback:Comparing {'consumer_tag': 'amq.gen-lAwNJbByTWke9V_C_7y12g'}
+ to {'consumer_tag': 'amq.gen-lAwNJbByTWke9V_C_7y12g'}
+DEBUG:pika.callback:Removing callback #0: {'callback': <bound method BlockingCha
+nnel._on_rpc_complete of <pika.adapters.blocking_connection.BlockingChannel obje
+ct at 0x1016cf7d0>>, 'only': None, 'one_shot': True, 'arguments': {'consumer_tag
+': 'amq.gen-lAwNJbByTWke9V_C_7y12g'}, 'calls': 0}
+DEBUG:pika.callback:Calling <bound method BlockingChannel._on_rpc_complete of <p
+ika.adapters.blocking_connection.BlockingChannel object at 0x1016cf7d0>> for "1:
+Basic.ConsumeOk"
+DEBUG:pika.channel:Discarding frame <METHOD(['frame_type=1', 'channel_number=1',
+ "method=<Basic.ConsumeOk(['consumer_tag=amq.gen-lAwNJbByTWke9V_C_7y12g'])>"])>
+DEBUG:pika.channel:Called with <METHOD(['frame_type=1', 'channel_number=1', "met
+hod=<Basic.Deliver(['consumer_tag=amq.gen-lAwNJbByTWke9V_C_7y12g', 'redelivered=
+False', 'routing_key=amq.gen-lAwNJbByTWke9V_C_7y12g', 'delivery_tag=1', 'exchang
+e='])>"])>, <Header(['frame_type=2', 'channel_number=1', 'properties=<BasicPrope
+rties>', 'body_size=1089'])>, '{"protocol_version": "1.0.0", "result": "W1X2Fwbm
+ljX19dCltfX2FmcmluaWNfXQpbX19fX2FyaW5fX19dCltfX19hcG5pY19fXQpbX19fYXBuaWNfX19dCl
+tfX19fYXJpbl9fX10KW19fX19hcmluX19fXQpbX19fYXJpbl9fX10KW19fcmlwZW5jY19fXQpbX19fcm
+lwZW5jY19fXQpbX19yaXBlbmNjX19dCltfX3JpcGVuY2NfX10KW19fcmlwZW5jY19fXQpbX19fYXBuaW
+NfX19dCltfX19fYXBuaWNfX19dCltfX19hcG5pY19fX10KW19fX2FwbmljX19fXQpbX19fX2FwbmljX1
+9fXQpbX19fX2FwbmljX19fXQpbX19fX2FwbmljX19fX10KW19fX19hcG5pY19fX19dCltfX19hcG5pY1
+9fX10KW19fX2FwbmljX19fXQpbX19fX2FwbmljX19fX10KW19fX19hcG5pY19fX10KW19fX19hcG5pY1
+9fX19dCltfX19fYXBuaWNfX19fXQpbX19fX2FyaW5fX19dCltfX19yaXBlbmNjX19dCltfX19yaXBlbm
+NjX19dCltfX19hcG5pY19fXQpbX19fX2FwbmljX19fXQpbX19fX2FwbmljX19fX10KW19fX2xhY25pY1
+9fX10KW19fX2xhY25pY19fXQpbX19fbGFjbmljX19fXQpbX19fX2FyaW5fX19fXQpbX19fX2xhY25pY1
+9fX10KW19fX19hcG5pY19fX10KW19fX19hcG5pY19fX10KW19fX19hcG5pY19fX10KW19fX19hcG5pY1
+9fX19dCltfX19hcG5pY19fX10KW19fX2FwbmljX19fXQpbX19fYXBuaWNfX10KW19fX19hcG5pY19fX1
+0KW19fcmlwZW5jY19fXQpbX19yaXBlbmNjX19dCltfX19yaXBlbmNjX19fXQpbX19fX2FyaW5fX19fXQ
+pbX19hcG5pY19fXQo=", "server_name": "RPC Server 0.1", "time": 1387166320}
+'
+DEBUG:root:%s: received reply from server
+DEBUG:pika.callback:Added: {'callback': <bound method BlockingChannel._on_rpc_co
+mplete of <pika.adapters.blocking_connection.BlockingChannel object at 0x1016cf7
+d0>>, 'only': None, 'one_shot': True, 'arguments': {'consumer_tag': 'amq.gen-lAw
+NJbByTWke9V_C_7y12g'}, 'calls': 1}
+DEBUG:pika.callback:Processing 1:Basic.CancelOk
+DEBUG:pika.callback:Processing use of oneshot callback
+DEBUG:pika.callback:0 registered uses left
+DEBUG:pika.callback:Comparing {'consumer_tag': 'amq.gen-lAwNJbByTWke9V_C_7y12g'}
+ to {'consumer_tag': 'amq.gen-lAwNJbByTWke9V_C_7y12g'}
+DEBUG:pika.callback:Removing callback #0: {'callback': <bound method BlockingCha
+nnel._on_rpc_complete of <pika.adapters.blocking_connection.BlockingChannel obje
+ct at 0x1016cf7d0>>, 'only': None, 'one_shot': True, 'arguments': {'consumer_tag
+': 'amq.gen-lAwNJbByTWke9V_C_7y12g'}, 'calls': 0}
+DEBUG:pika.callback:Calling <bound method BlockingChannel._on_rpc_complete of <p
+ika.adapters.blocking_connection.BlockingChannel object at 0x1016cf7d0>> for "1:
+Basic.CancelOk"
+----------------------------------------------------------------------------------

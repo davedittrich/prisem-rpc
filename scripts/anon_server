@@ -1,0 +1,202 @@
+#!/usr/bin/env python
+
+import subprocess
+import os
+import json
+import tempfile
+import hashlib
+import sys
+import pika
+import base64
+import time
+from optparse import OptionParser
+
+# Local imports
+from rpc import rpc_common
+from rpc import rpcserver
+from rpc import rpcrequest
+from rpc import rpcresponse
+
+PROGRAM = 'anon'
+
+NAME = 'Anonymization RPC Server'
+
+USAGE = """
+
+USAGE...
+
+"""
+
+class AnonServer(rpcserver.RPC_Server):
+    """ Anonymization server. """
+
+    def __init__(self, *args, **kwargs):
+        rpcserver.RPC_Server.__init__(self, *args, **kwargs)
+        self.requestobj = rpcrequest.RPC_Request(program=PROGRAM)
+        self.name = NAME
+
+    def get_usage(self):
+        return USAGE
+
+    def on_request(self, chan, method, props, body):
+        """ipgrep API call."""
+        self.logdebug("Callback on_request() initiated")
+        self.loginfo(self.get_idstr())
+        self.loginfo("routing_key=%s correlation_id=%s" \
+                % (props.reply_to, props.correlation_id))
+
+        self.requestobj.loads(body)
+        self.logdebug("Request is %s" % self.requestobj.terse())
+
+        # Pull out message body and send through ipgrep
+        appdata = self.requestobj.get_appdata()
+        usage = appdata.get('usage', 'false')
+        try:
+            data = base64.b64decode(appdata.get('data', ''))
+        except Exception:
+            data = ""
+        try:
+            netmap = base64.b64decode(appdata.get('netmap', ''))
+        except Exception:
+            netmap = ""
+        stats = appdata.get('stats', 'false')
+        jsonout = appdata.get('json', 'false')
+
+        self.logdebug("Calling self._application()")
+        self.responseobj = rpcresponse.RPC_Response(program=PROGRAM)
+        start = time.time()
+        (retcode, stdout_, stderr_) = self._application(
+                data=data,
+                netmap=netmap,
+                jsonout=jsonout,
+                stats=stats,
+                usage=usage)
+        self.loginfo("Call to self._application() took " +
+            "%f " % (float(time.time() - start)) +
+            "seconds (host %s, pid %d)" % (self.get_hostname(), self.get_pid()))
+        self.responseobj.set_appdata({'retcode': retcode,
+                'stdout' : base64.b64encode(stdout_),
+                'stderr' : base64.b64encode(stderr_)})
+
+        self.server_log_response(self.responseobj)
+        self.logdebug("Server basic_publish: routing_key=%s correlation_id=%s" \
+                % (props.reply_to, props.correlation_id))
+        chan.confirm_delivery()
+        chan.basic_publish(exchange='',
+                routing_key=props.reply_to,
+                properties=pika.BasicProperties(
+                    correlation_id=props.correlation_id),
+                body=str(self.responseobj))
+        self.logdebug("ACK basic_ack delivery_tag %s" % method.delivery_tag)
+        chan.basic_ack(delivery_tag=method.delivery_tag)
+        self.logdebug("Returning from API call")
+
+    def _application(self, data, netmap, jsonout, stats, usage):
+        """Run data through "ipgrep --anonymize" to produce
+        anonymized output.
+
+        """
+        self.logdebug("Entering _application()")
+
+        if data == "" and usage != "true":
+            return (1, "", "Error: %s service " % PROGRAM + \
+                "received no data to process\n")
+
+        # Make sure 'ipgrep' is in a directory in $PATH.
+        # (and that there aren't multiple versions that will be
+        # found in different runtime contexts.)
+        ipgrep = "ipgrep"
+        cmd = [ipgrep]
+        if usage == "true":
+            cmd.extend(["--usage"])
+        elif jsonout == "true":
+            cmd.extend(["--json"])
+        else:
+            cmd.extend(["--context", "--anonymize"])
+        if stats == "true":
+            cmd.extend(["--stats"])
+        if netmap != '':
+            (m, mpath) = tempfile.mkstemp()
+            self.logdebug("Creating temporary netmap file: %s" % mpath)
+            os.write(m, netmap)
+            os.close(m)
+            cmd.extend(["--networks", mpath])
+        cmdtmp = "Running command \"%s\"" % " ".join([i for i in cmd])
+        self.logdebug("%s" % cmdtmp)
+
+        f = tempfile.SpooledTemporaryFile()
+        f.write(data)
+        f.seek(0)
+        p = subprocess.Popen(cmd,
+            stdin=f,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=os.environ)
+        f.close()
+        (stdout_, stderr_) = p.communicate()
+        retcode = p.returncode
+        try:
+            os.unlink(mpath)
+        except:
+            pass
+
+        if retcode != 0:
+            self.logdebug("Program %s " % ipgrep +
+                "returned a non-zero exit code: %s" % retcode)
+        if stdout_ is None:
+            self.loginfo("%s returned no output" % ipgrep)
+        else:
+            s = "Output: %d bytes; SHA1: %s" % \
+                    (len(stdout_), hashlib.sha1(stdout_).hexdigest())
+            self.logdebug(s)
+        return (retcode, stdout_, stderr_)
+
+parser = OptionParser()
+parser.add_option("-d", "--debug",
+    action="store_true", dest="debug",
+    help="Turn on debugging mode")
+parser.add_option("-e", "--exchange",
+    action="store", dest="exchange", metavar="EXCHANGE",
+    default="",
+    help="Exchange to use (default: '')")
+parser.add_option("-m", "--map",
+    action="store", dest="mapfile", metavar="MAPFILE",
+    help="Mapping file.")
+parser.add_option("-q", "--queue-base", default=PROGRAM,
+    action="store", dest="queuebase", metavar="QUEUEBASE",
+    help="Queue base name to use (default %s)" % PROGRAM)
+parser.add_option("--server",
+    action="store", dest="server", metavar="SERVER",
+    default=None,
+    help="RabbitMQ server (default: None)")
+parser.add_option("-u", "--usage",
+    action="store_true", dest="usage",
+    help="Print usage information.")
+parser.add_option("-v", "--verbose",
+    action="store_true", dest="verbose", default=False,
+    help="Be verbose (on stdout) about what is happening")
+(options, args) = parser.parse_args()
+
+_progname = sys.argv[0]
+
+USAGESTRING = """usage: %(_progname)s [options] [args]
+
+
+"""
+
+if options.usage:
+    sys.stdout.write(USAGESTRING % vars())
+    sys.exit(0)
+
+anon_server = AnonServer(program=PROGRAM,
+        scriptname=_progname,
+        verbose=options.verbose,
+        debug=options.debug,
+        server=options.server,
+        exchange=options.exchange,
+        queuebase=options.queuebase)
+
+anon_server.logdebug("Calling anon_server.run()")
+anon_server.run()
+anon_server.logdebug("Exiting")
+sys.exit(0)

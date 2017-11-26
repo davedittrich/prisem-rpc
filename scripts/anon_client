@@ -1,0 +1,139 @@
+#!/usr/bin/env python
+
+import time
+import json
+import pika
+import sys
+import os
+import base64
+from optparse import OptionParser
+import hashlib
+import uuid
+
+# Local imports
+
+from rpc import rpc_common
+from rpc import rpcclient
+from rpc import rpcrequest
+from rpc import rpcresponse
+
+PROGRAM = 'anon'
+
+USAGESTRING="""usage: %(_progname)s [options] [args]"""
+
+_progname=sys.argv[0]
+_shortname, _extension = os.path.splitext(_progname)
+
+
+class AnonClient(rpcclient.RPC_Client):
+    """ ipgrep anonymization client. """
+
+    NAME = 'Anonymization RPC Client'
+
+    def __init__(self, *args, **kwargs):
+        rpcclient.RPC_Client.__init__(self, *args, **kwargs)
+
+
+parser = OptionParser(usage=USAGESTRING % vars())
+parser.add_option("-d", "--debug",
+    action="store_true", dest="debug",
+    help="Turn on debugging mode.")
+parser.add_option("-e", "--rpc-exchange",
+    action="store", dest="rpcexchange", metavar="RPCEXCHANGE",
+    default="",
+    help="Exchange to use (default: '')")
+parser.add_option("-J", "--json",
+    action="store_true", dest="json",
+    help="Output in JSON.")
+parser.add_option("-m", "--map", default=None,
+    action="store", dest="mapfile", metavar="MAPFILE",
+    help="Mapping file.")
+parser.add_option("-q", "--queue-base", default=PROGRAM,
+    action="store", dest="queuebase", metavar="QUEUEBASE",
+    help="Queue base name to use (default %s)" % PROGRAM)
+parser.add_option("-r", "--file",
+    action="store", dest="fname", metavar="FILE",
+    default=None,
+    help="File to be anonymized.")
+parser.add_option("--server",
+    action="store", dest="server", metavar="SERVER",
+    default=None,
+    help="RabbitMQ server (default: None)")
+parser.add_option("-s", "--stats",
+    action="store_true", default=False, dest="stats",
+    help="Add statistics output.")
+parser.add_option("-u", "--usage",
+    action="store_true", dest="usage",
+    help="Print usage information.")
+parser.add_option("-v", "--verbose",
+    action="store_true", dest="verbose", default=False,
+    help="Be verbose (on stdout) about what is happening.")
+(options,args) = parser.parse_args()
+
+if options.usage:
+    usage = "true"
+else:
+    usage = "false"
+
+if options.fname is None:
+    data = ""
+else:
+    f = open(options.fname, "r")
+    data = base64.b64encode(f.read())
+    f.close()
+
+if options.mapfile is None:
+    netmap = ""
+else:
+    m = open(options.mapfile, "r")
+    netmap = base64.b64encode(m.read())
+    m.close()
+
+if options.stats:
+    stats = "true"
+else:
+    stats = "false"
+
+if options.json:
+    jsonout = "true"
+else:
+    jsonout = "false"
+
+argsopts = {'stats': stats,
+        'usage': usage,
+        'json': jsonout,
+        'netmap': netmap,
+        'data': data}
+
+anon_client = AnonClient(
+        program=PROGRAM,
+        scriptname=_progname,
+        verbose=options.verbose,
+        debug=options.debug,
+        server=options.server,
+        exchange=options.rpcexchange,
+        queuebase=options.queuebase)
+
+requestobj = rpcrequest.RPC_Request(program=PROGRAM,
+        argsopts=argsopts)
+
+responseobj = rpcresponse.RPC_Response(program=PROGRAM)
+
+anon_client.logdebug("Calling anon_client.call()")
+
+responseobj = anon_client.call(requestobj)
+retcode = responseobj.get_retcode()
+if retcode == 0:
+    stdout_ = base64.b64decode(responseobj.get_stdout())
+    s = "Received reply from server --- " + \
+        "%d bytes; SHA1: %s" % \
+                (len(stdout_),
+                        hashlib.sha1(stdout_).hexdigest())
+    anon_client.logdebug(s)
+else:
+    s = "Received error %s from server" % retcode
+    anon_client.loginfo(s)
+
+sys.stdout.write(base64.b64decode(responseobj.get_stdout()))
+sys.stderr.write(base64.b64decode(responseobj.get_stderr()))
+sys.exit(retcode)

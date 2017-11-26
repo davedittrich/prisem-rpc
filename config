@@ -1,0 +1,26 @@
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = false
+	logallrefupdates = true
+[remote "origin"]
+	url = git@git.devops.develop:/opt/git/prisem.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
+[branch "master"]
+	remote = origin
+	merge = refs/heads/master
+[hubflow "branch"]
+	master = master
+	develop = develop
+[branch "develop"]
+	remote = origin
+	merge = refs/heads/develop
+[hubflow "prefix"]
+	feature = feature/
+	release = release/
+	hotfix = hotfix/
+	support = support/
+	versiontag = 
+[branch "feature/purgedata"]
+	remote = origin
+	merge = refs/heads/feature/purgedata

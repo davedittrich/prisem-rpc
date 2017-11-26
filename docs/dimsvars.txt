@@ -1,0 +1,7 @@
+.. Ansible managed: /home/dittrich/dims/git/prisem/docs/dimsvars.j2 modified on 2017-08-18 12:38:22 by dittrich on dimsdemo1
+
+.. |amqp_program|    replace:: rabbitmq
+.. |amqp_server|     replace:: "red.devops.local"
+.. |amqp_port|       replace:: 5672
+.. |amqp_mgmt_port|  replace:: 55672
+

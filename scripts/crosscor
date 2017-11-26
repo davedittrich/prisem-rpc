@@ -1,0 +1,256 @@
+#!/bin/bash
+#
+#--------------------------------------------------------------------------
+# crosscor - Produce cross-correlation data from arbitrary
+# text files. 
+#
+# Quick hack to process arbitrary text files containing
+# IP addresses and DNS names (i.e., network identifiers)
+# and produce a JSON formatted data file consisting of:
+#   1. An array of network identifiers associated
+#      with PRISEM participants,
+#   2. An array of network identifiers *not* in that
+#      same set, and
+#   3. A statistical breakdown of data from item #1,
+#      broken down by associated participant IDs.
+#
+# Copyright (c) 2010-2017, David Dittrich <dave.dittrich@gmail.com>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+# 3. The name of the author may not be used to endorse or promote products
+#    derived from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+# IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+# NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+# THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#--------------------------------------------------------------------------
+
+PROGNAME=$(basename $0)
+VERSION=1.0.0
+VERBOSITY=0
+DEBUG=false
+HOST=$(hostname)
+IDFF_DEFAULT=unspecified
+# Make sure 'ipgrep' is in a directory in $PATH
+# (and that there aren't multiple versions that will be
+# found in different runtime contexts.)
+IPGREP="ipgrep"
+
+umask 007
+
+# Temporary file names (cleaned up on exit).
+if [ -d "~/tmp" ]
+then
+        TEMP_DIR=~/tmp
+else
+        TEMP_DIR=/tmp
+fi
+
+# Any file names starting with TEMP_BASENAME will get
+# deleted in cleanup()
+TEMP_BASENAME=$TEMP_DIR/${PROGNAME}.$$.$RANDOM
+
+
+# Functions
+#---------------------------------------------------------------
+function usage {
+        # Display usage message on standard error
+        echo "Usage: $PROGNAME [options] file [file...]" 1>&2
+        cat << EOD
+OPTIONS:
+  -d
+  --debug            Turn on debugging output.
+  -n file
+  --networks=file
+                     Match on the CIDR blocks or domain names listed in the
+                      referenced file.  Entries must occur one per line, and
+                     either use CIDR notation (e.g., "192.168.1.0/24") or
+                     leading dot followed by top level of domain (e.g.,
+                     ".example.com")
+  -u
+  --usage
+                     Show examples of how to use various option
+                     combinations to accomplish specific tasks.
+  -v
+  --verbose          Be verbose (multiple -v or --verbose=N sets
+                     higher levels of verbosity.)
+  -V
+  --version          Print version number and exit.
+
+NETWORKS TO SEARCH FOR
+
+See --help output for ipgrep to understand how the network
+map file is used. This option is here to pass-through the mapping
+file when called as an RPC service.
+
+EOD
+        exit 0
+}
+
+function cleanup {
+	# Perform program exit housekeeping
+	# Optionally accepts an exit status
+	RETVAL=${1:-1}
+	REMOVE="${TEMP_BASENAME}.*"
+	if [ ${VERBOSITY} -gt 0 -o ${DEBUG} == "true" ]; then
+		echo "Removing: ${REMOVE}"
+	fi
+	rm -f ${REMOVE}
+	exit $1
+}
+
+function error_exit {
+	# Display error message and exit
+	echo "${PROGNAME}: ${1:-"Unknown Error"}" 1>&2
+	cleanup 1
+}
+
+#---------------------------------------------------------------
+# Note that we use `"$@"' to let each command-line parameter expand to a 
+# separate word. The quotes around `$@' are essential!
+# We need TEMP as the `eval set --' would nuke the return value of getopt.
+TEMP=`getopt -o dhI:nv:V:: --long debug,help,iff:,networks:,verbose,version:: \
+     -n $PROGNAME -- "$@"`
+
+if [ $? != 0 ] ; then echo "Terminating..." >&2 ; exit 1 ; fi
+
+# Note the quotes around `$TEMP': they are essential!
+eval set -- "$TEMP"
+
+while true ; do
+    case "$1" in
+        -d|--debug) DEBUG=true ; shift ;;
+        -h|--help) usage; exit 0 ;;
+        -I|--iff) IDFF=$2 ; shift 2 ;;
+        -n|--networks) NETWORKSFILE=$2 ; shift 2 ;;
+        -v|--verbose)
+            # v has an optional argument. As we are in quoted mode,
+            # an empty parameter will be generated if its optional
+            # argument is not found.
+            case "$2" in
+                "") VERBOSITY=$((${VERBOSITY}+1)); shift 2;;
+                *)  VERBOSITY=$2; shift 2;;
+            esac ;;
+        -V|--version) echo "${PROGNAME} version ${VERSION}"; exit 0;;
+        --) shift ; break ;;
+        *) echo "Internal error!" ; exit 1 ;;
+    esac
+done
+
+# Process any remaining command line args as files
+FILES=$*
+
+IDFF=${IDFF:-$IDFF_DEFAULT}
+
+if [ "${IDFF}" != ${IDFF_DEFAULT} \
+	-a "${IDFF}" != "friend" \
+	-a "${IDFF}" != "foe" ]; then
+	error_exit "--iff must be 'friend' or 'foe'"
+fi
+
+trap cleanup SIGHUP SIGINT SIGTERM
+
+# Produce JSON preamble
+printf '{"program": "crosscor",\n'
+printf ' "date": "'"$(date)"'",\n'
+printf ' "iff": "'${IDFF}'",\n'
+printf ' "matching": ['
+
+if [ "${DEBUG}" == "true" ]; then
+        echo "[+] PRISEM IPs" >&2
+fi
+
+${IPGREP} --networks ${NETWORKSFILE} \
+        --list \
+        $FILES > ${TEMP_BASENAME}.matchips
+
+if [ $? != 0 ]; then
+	error_exit "Call 1 to ${IPGREP} failed."
+fi
+
+${IPGREP} --networks ${NETWORKSFILE} \
+        --anonymize \
+        --method "~~~" \
+        ${TEMP_BASENAME}.matchips > ${TEMP_BASENAME}.matchanon
+
+if [ $? != 0 ]; then
+	error_exit "Call 2 to ${IPGREP} failed."
+fi
+
+paste ${TEMP_BASENAME}.matchips ${TEMP_BASENAME}.matchanon |
+awk '
+BEGIN { comma="\n"; }
+{
+        gsub(/[\[~\]]/,"",$0);
+        if (count++ > 0) comma=",\n"
+        printf "%s   {\"ip4\":\"%s\", \"site\":\"%s\"}", comma, $1, $2;
+}'
+printf '\n  ]'
+
+if [ "${DEBUG}" == "true" ]; then
+        echo "[+] Not PRISEM IPs" >&2
+fi
+
+printf ',\n "nonmatching": ['
+
+${IPGREP} --networks ${NETWORKSFILE} \
+        --anonymize \
+        $FILES |
+${IPGREP} --networks ${NETWORKSFILE} \
+	--revert-match \
+        --list |
+awk '
+BEGIN { comma="\n"; }
+{
+        if (count++ > 0) comma=",\n"
+        printf "%s   {\"ip4\":\"%s\",\"site\":\"UNKNOWN\"}", comma, $1;
+}'
+
+printf '\n  ]'
+
+if [ $? != 0 ]; then
+	error_exit "Call 4 to ${IPGREP} failed."
+fi
+
+# Generate statistics output.
+if [ "${DEBUG}" == "true" ]; then
+        echo "[+] PRISEM stats" >&2
+fi
+printf ',\n "matching_stats": ['
+${IPGREP} \
+        --networks ${NETWORKSFILE} \
+        --quiet \
+        --stats \
+        ${TEMP_BASENAME}.matchips |
+grep '[:]' |
+awk '
+BEGIN { comma="\n"; }
+{
+        gsub(/[\(\)\%:]/,"",$0);
+        if (count++ > 0) comma=",\n"
+        printf "%s   {\"site\":\"%s\"", comma, $1;
+        printf ",\"count\":\"%s\"", $2;
+        printf ",\"percent\":\"%s\"}", $3;
+}'
+printf '\n  ]'
+
+# Close out JSON object
+printf "\n}\n"
+
+exit 0
+

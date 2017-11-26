@@ -1,0 +1,21 @@
+#!/usr/bin/env python2.7
+
+import yaml
+import sys
+
+yamlConfigFile = open(sys.argv[1],"r")
+
+# the yaml file will be converted to a dict
+# for sub sections the dict will nest dicts
+theDict = yaml.load(yamlConfigFile)
+
+print theDict
+
+# to list the car types (like car1, car2, etc
+print theDict['sites'].keys()
+
+# to dump the yaml dict back to a file
+# or in our case a multi-line string use the dump command
+# which you could write to a file
+#
+print yaml.dump(theDict)

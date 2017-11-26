@@ -1,0 +1,2 @@
+include README anon_client anon_server cifbulk_client cifbulk_server crosscor_client crosscor_server cumdist logmon rpcserver rwfind_client rwfind_server
+recursive-include rpc

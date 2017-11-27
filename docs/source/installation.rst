@@ -95,14 +95,14 @@ will use the ``setup.py`` file to control installation:
 .. code-block:: bash
 
     (prisem)[dittrich@localhost src (dev)]$ git stat
-    ?? src/prisem_rpc.egg-info/
+    ?? src/prisem-rpc.egg-info/
 
 ..
 
 .. code-block:: bash
 
-    (prisem)[dittrich@localhost src (dev)]$ tree prisem_rpc.egg-info/
-    prisem_rpc.egg-info/
+    (prisem)[dittrich@localhost src (dev)]$ tree prisem-rpc.egg-info/
+    prisem-rpc.egg-info/
     ├── PKG-INFO
     ├── SOURCES.txt
     ├── dependency_links.txt
@@ -114,8 +114,8 @@ will use the ``setup.py`` file to control installation:
 
 .. code-block:: bash
 
-    (prisem)[dittrich@localhost src (dev)]$ head prisem_rpc.egg-info/*
-    ==> prisem_rpc.egg-info/PKG-INFO <==
+    (prisem)[dittrich@localhost src (dev)]$ head prisem-rpc.egg-info/*
+    ==> prisem-rpc.egg-info/PKG-INFO <==
     Metadata-Version: 1.0
     Name: prisem-rpc
     Version: 1.0.0
@@ -127,7 +127,7 @@ will use the ``setup.py`` file to control installation:
     Description: PRISEM RPC clients and services.
     Platform: UNKNOWN
     
-    ==> prisem_rpc.egg-info/SOURCES.txt <==
+    ==> prisem-rpc.egg-info/SOURCES.txt <==
     MANIFEST.in
     README
     anon_client
@@ -139,10 +139,10 @@ will use the ``setup.py`` file to control installation:
     crosscor_server
     cumdist
     
-    ==> prisem_rpc.egg-info/dependency_links.txt <==
+    ==> prisem-rpc.egg-info/dependency_links.txt <==
     
     
-    ==> prisem_rpc.egg-info/top_level.txt <==
+    ==> prisem-rpc.egg-info/top_level.txt <==
     rpc
 
 ..

@@ -41,9 +41,9 @@ def get_config():
     cfg = VersioneerConfig()
     cfg.VCS = "git"
     cfg.style = "pep440"
-    cfg.tag_prefix = "prisem_rpc-"
-    cfg.parentdir_prefix = "prisem_rpc-"
-    cfg.versionfile_source = "prisem_rpc/_version.py"
+    cfg.tag_prefix = "prisem-rpc-"
+    cfg.parentdir_prefix = "prisem-rpc-"
+    cfg.versionfile_source = "prisem-rpc/_version.py"
     cfg.verbose = False
     return cfg
 

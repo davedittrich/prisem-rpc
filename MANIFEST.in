@@ -1,2 +1,2 @@
 include versioneer.py
-include prisem_rpc/_version.py
+include prisem-rpc/_version.py

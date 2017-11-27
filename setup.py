@@ -19,7 +19,7 @@ import versioneer
 
 setup(
     version=versioneer.get_version(),
-    packages={'': 'prisem_rpc'},
+    packages={'': 'prisem-rpc'},
     cmdclass=versioneer.get_cmdclass(),
     setup_requires=['pbr>=2.0'],
     pbr=True)

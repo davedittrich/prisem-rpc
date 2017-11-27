@@ -3,6 +3,7 @@ USER:= $(shell whoami)
 REV:= $(shell if [ -f VERSION ]; then cat VERSION; else git describe; fi)
 UID:= $(id -u)
 PYTHONPATH:=..
+PACKAGENAME:=prisem-rpc
 PYTHON:=$(shell which python)
 SERVER:=rabbit.devops.local
 DATA=$(GIT)/dims-sample-data
@@ -19,9 +20,9 @@ QUEUEALT:=
 .PHONY: release
 #release: sdist bdist_wheel
 release: clean sdist
-	cp $(shell echo dist/prisem_rpc-*.tar.gz|head -n1) /vm/cache/sources/
+	cp $(shell echo dist/$(PACKAGENAME)-*.tar.gz|head -n1) /vm/cache/sources/
 	ansible -i $(GIT)/private-develop/inventory/ \
-		-m copy -a "src=$(shell echo dist/prisem_rpc-*.tar.gz|head -n1) dest=/opt/dims/src" orange.devops.develop
+		-m copy -a "src=$(shell echo dist/$(PACKAGENAME)-*.tar.gz|head -n1) dest=/opt/dims/src" orange.devops.develop
 
 #HELP bdist_egg - build an egg package
 .PHONY: bdist_egg

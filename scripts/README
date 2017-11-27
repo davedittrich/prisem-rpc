@@ -61,7 +61,7 @@ usage: %(sys.argv[0])s [options] [args]
 
 The following is output using the --verbose option:
 
-RPC command message: {"protocol_version": "1.0.0", "client_name": "RPC Client 1.0.0",
+RPC command message: {"protocol_version": "1.1.0", "client_name": "RPC Client 1.1.0",
 "command": {"data": "cndmaW5kIC0tIE1vbiwgMDEgT2N0IDIwMTIgMTY6MjY6MzcgLTA3MDAKCkZ
 vdW5kIDEyIGZsb3dzIG92ZXIgdGhlIGxhc3QgMzAgZGF5cyB0by9mcm9tIHRoZSBmb2xsb3dpbmc6CjU
 [ ... many lines deleted ...]
@@ -246,7 +246,7 @@ Using map file:
 123.232.0.0/14|apnic|apnic
 125.140.64.0/18|apnic|apnic
 128.252.0.0/16|arin|arin
-176.31.0.0/16|ripencc|ripencc
+176.31.1.0/16|ripencc|ripencc
 176.223.119.0/24|ripencc|ripencc
 183.60.16.0/21|apnic|apnic
 183.60.240.0/20|apnic|apnic
@@ -269,7 +269,7 @@ Using map file:
 212.116.128.0/19|ripencc|ripencc
 216.245.192.0/19|arin|arin
 221.12.0.0/17|apnic|apnic
-RPC command message: {"protocol_version": "1.0.0", "client_name": "RPC Client 1.0.0"
+RPC command message: {"protocol_version": "1.1.0", "client_name": "RPC Client 1.1.0"
 , "command": {"map": "MS4yMDguMC4wLzEyfGFwbmljfGFwbmljCjQxLjY3LjAuMC8xOHxhZnJpbm
 ljfGFmcmluaWMKNTAuOTcuMTI4LjAvMTh8YXJpbnxhcmluCjU4LjI0MC4wLjAvMTV8YXBuaWN8YXBuaW
 MKNjEuNjcuMTI4LjAvMTd8YXBuaWN8YXBuaWMKNjQuMTk5Ljk2LjAvMTl8YXJpbnxhcmluCjcwLjE2Ny
@@ -532,7 +532,7 @@ DEBUG:pika.channel:Called with <METHOD(['frame_type=1', 'channel_number=1', "met
 hod=<Basic.Deliver(['consumer_tag=amq.gen-lAwNJbByTWke9V_C_7y12g', 'redelivered=
 False', 'routing_key=amq.gen-lAwNJbByTWke9V_C_7y12g', 'delivery_tag=1', 'exchang
 e='])>"])>, <Header(['frame_type=2', 'channel_number=1', 'properties=<BasicPrope
-rties>', 'body_size=1089'])>, '{"protocol_version": "1.0.0", "result": "W1X2Fwbm
+rties>', 'body_size=1089'])>, '{"protocol_version": "1.1.0", "result": "W1X2Fwbm
 ljX19dCltfX2FmcmluaWNfXQpbX19fX2FyaW5fX19dCltfX19hcG5pY19fXQpbX19fYXBuaWNfX19dCl
 tfX19fYXJpbl9fX10KW19fX19hcmluX19fXQpbX19fYXJpbl9fX10KW19fcmlwZW5jY19fXQpbX19fcm
 lwZW5jY19fXQpbX19yaXBlbmNjX19dCltfX3JpcGVuY2NfX10KW19fcmlwZW5jY19fXQpbX19fYXBuaW

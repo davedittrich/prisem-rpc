@@ -74,7 +74,7 @@ will use the ``setup.py`` file to control installation:
       Running setup.py develop for prisem-rpc
         warning: manifest_maker: MANIFEST.in, line 2: 'recursive-include' expects <dir> <pattern1> <pattern2> ...
         Creating /Users/dittrich/.virtualenvs/prisem/lib/python2.7/site-packages/prisem-rpc.egg-link (link to .)
-        Adding prisem-rpc 1.0.0 to easy-install.pth file
+        Adding prisem-rpc 1.1.0 to easy-install.pth file
         Installing anon_client script to /Users/dittrich/.virtualenvs/prisem/bin
         Installing anon_server script to /Users/dittrich/.virtualenvs/prisem/bin
         Installing cifbulk_client script to /Users/dittrich/.virtualenvs/prisem/bin
@@ -118,7 +118,7 @@ will use the ``setup.py`` file to control installation:
     ==> prisem-rpc.egg-info/PKG-INFO <==
     Metadata-Version: 1.0
     Name: prisem-rpc
-    Version: 1.0.0
+    Version: 1.1.0
     Summary: PRISEM RPC scripts
     Home-page: UNKNOWN
     Author: David Dittrich
@@ -159,7 +159,7 @@ now available via the ``$PATH`` environment variable:
    ipdb==0.8
    ipython==2.4.0
    pika==0.9.14
-   prisem-rpc==1.0.0
+   prisem-rpc==1.1.0
    python-dateutil==2.4.0
    semantic-version==2.3.1
    six==1.9.0
@@ -188,10 +188,10 @@ They can be removed using ``pip`` as well:
 .. code-block:: bash
 
     (prisem)[dittrich@localhost src (dev)]$ pip uninstall prisem-rpc
-    Uninstalling prisem-rpc-1.0.0:
+    Uninstalling prisem-rpc-1.1.0:
       /Users/dittrich/.virtualenvs/prisem/lib/python2.7/site-packages/prisem-rpc.egg-link
     Proceed (y/n)? y
-      Successfully uninstalled prisem-rpc-1.0.0
+      Successfully uninstalled prisem-rpc-1.1.0
 
 ..
 

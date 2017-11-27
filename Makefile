@@ -44,7 +44,7 @@ sdist:
 
 #HELP artifact - build a source package artifact in directory "output"
 .PHONY: artifact
-artifact: sdist
+artifact: clean sdist
 	[ -d output ] || mkdir output
 	cp $(shell ls -t dist/*.tar.gz|head -n 1) output
 	(cd output && for F in *; do sha256sum $$F > $$F.sha256sum; done)

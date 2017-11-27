@@ -16,7 +16,7 @@ Call (RPC) client/server processing framework, and a
 fanout based logging mechanism using a `RabbitMQ`_ server
 for AMQP.
 
-.. figure:: ../docs/source/images/rabbitmq-bus-architecture-v3.png
+.. figure:: docs/source/images/rabbitmq-bus-architecture-v3.png
    :alt: PRISEM RabbitMQ bus architecture
    :width: 90 %
    :align: center
@@ -37,7 +37,7 @@ shared Indicators of Compromise and Observables,
 and for performing text-based anonymization of these
 reports for external sharing.
 
-.. figure:: ../docs/source/images/rabbitmq-flows.png
+.. figure:: docs/source/images/rabbitmq-flows.png
    :alt: PRISEM data flows through RabbitMQ
    :width: 90 %
    :align: center

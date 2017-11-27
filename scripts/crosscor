@@ -31,7 +31,7 @@
 #--------------------------------------------------------------------------
 
 PROGNAME=$(basename $0)
-VERSION=1.1.0
+VERSION=1.1.1
 VERBOSITY=0
 DEBUG=false
 HOST=$(hostname)

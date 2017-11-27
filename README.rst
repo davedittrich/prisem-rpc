@@ -2,8 +2,8 @@
                 PRISEM RPC utilities
 =======================================================
 
-* GitHub repo: https://github.com/davedittrich/prisem_rpc/
-* Documentation: https://prisem_rpc.readthedocs.io/
+* GitHub repo: https://github.com/davedittrich/prisem-rpc/
+* Documentation: https://prisem-rpc.readthedocs.io/
 * License: Apache License Version 2.0
 
 The PRISEM RPC utilities were written as part of the

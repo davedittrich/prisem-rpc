@@ -65,15 +65,15 @@ def extract(_dict, namespace=None):
 
 # Set defaults (may be over-ridden by rpc_config.yml file)
 
-VHOST = '/'
-SERVER = 'localhost'
-DOMAIN = 'localdomain'
-USER = 'rpc_user'
-PWD = 'rpc_user'
-RPCEXCHANGE = ''
-LOGEXCHANGE = 'logs'
-QUEUEBASE = 'rpc'
-DISPLAY_UTC = True
+RPC_VHOST = '/'
+RPC_SERVER = 'localhost'
+RPC_DOMAIN = 'localdomain'
+RPC_USER = 'rpc_user'
+RPC_PWD = 'rpc_user'
+RPC_RPCEXCHANGE = ''
+RPC_LOGEXCHANGE = 'logs'
+RPC_QUEUEBASE = 'rpc'
+RPC_DISPLAY_UTC = True
 
 def load_config():
     """
@@ -90,15 +90,15 @@ def load_config():
 
     ---
 
-    VHOST: '/'
-    SERVER: 'localhost'
-    DOMAIN: 'localdomain'
-    USER: 'rpc_user'
-    PWD: 'rpcm3pwd'
-    RPCEXCHANGE: ''
-    LOGEXCHANGE: 'logs'
-    QUEUEBASE: 'rpc'
-    DISPLAY_UTC: False
+    RPC_VHOST: '/'
+    RPC_SERVER: 'localhost'
+    RPC_DOMAIN: 'localdomain'
+    RPC_USER: 'rpc_user'
+    RPC_PWD: 'rpcm3pwd'
+    RPC_RPCEXCHANGE: ''
+    RPC_LOGEXCHANGE: 'logs'
+    RPC_QUEUEBASE: 'rpc'
+    RPC_DISPLAY_UTC: False
 
     """
     _conf_file = "rpc_config.yml"
@@ -158,7 +158,7 @@ class RPC_Base_Object(object):
     NAME = 'RPC_Base_Object'
     PROGRAM = 'unspecified_program'
     try:
-        HOSTNAME = "{}.{}".format(socket.gethostname(), DOMAIN)
+        HOSTNAME = "{}.{}".format(socket.gethostname(), RPC_DOMAIN)
     except NameError:
         HOSTNAME = socket.getfqdn()
     except Exception as e:
@@ -333,15 +333,15 @@ class RPC_Object(RPC_Base_Object):
 
     def __init__(self, *args, **kwargs):
         # Process client+server related keywords here
-        self.server = kwargs.pop('server', SERVER)
+        self.server = kwargs.pop('server', RPC_SERVER)
         if self.server is None:
-            self.server = SERVER
-        self.rpcexchange = kwargs.pop('rpcexchange', RPCEXCHANGE)
-        self.logexchange = kwargs.pop('logexchange', LOGEXCHANGE)
-        self.queuebase = kwargs.pop('queuebase', QUEUEBASE)
-        self.vhost = kwargs.pop('vhost', VHOST)
-        self.user = kwargs.pop('user', USER)
-        self.pwd = kwargs.pop('pwd', PWD)
+            self.server = RPC_SERVER
+        self.rpcexchange = kwargs.pop('rpcexchange', RPC_RPCEXCHANGE)
+        self.logexchange = kwargs.pop('logexchange', RPC_LOGEXCHANGE)
+        self.queuebase = kwargs.pop('queuebase', RPC_QUEUEBASE)
+        self.vhost = kwargs.pop('vhost', RPC_VHOST)
+        self.user = kwargs.pop('user', RPC_USER)
+        self.pwd = kwargs.pop('pwd', RPC_PWD)
         RPC_Base_Object.__init__(self, *args, **kwargs)
         self.queue_name = None
         self.set_queue_name(self.queuebase)
@@ -351,14 +351,14 @@ class RPC_Object(RPC_Base_Object):
         """Get attribute."""
         return getattr(self,attribute,None)
 
-    def set_queue_name(self, base=QUEUEBASE):
+    def set_queue_name(self, base=RPC_QUEUEBASE):
         self.queue_name = "%s_%s" % (base, self.get_protocol_version())
 
     def get_queue_name(self):
         """Get queue name."""
         return self.queue_name
 
-    def set_rpc_exchange(self, exchange=RPCEXCHANGE):
+    def set_rpc_exchange(self, exchange=RPC_RPCEXCHANGE):
         """Set RPC exchange."""
         self.rpcexchange = exchange
 
@@ -366,7 +366,7 @@ class RPC_Object(RPC_Base_Object):
         """Get RPC exchange."""
         return self.rpcexchange
 
-    def set_log_exchange(self, exchange=LOGEXCHANGE):
+    def set_log_exchange(self, exchange=RPC_LOGEXCHANGE):
         """Set log exchange."""
         self.logexchange = exchange
 

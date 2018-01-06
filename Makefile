@@ -5,7 +5,7 @@ UID:= $(id -u)
 PYTHONPATH:=..
 PACKAGENAME:=prisem-rpc
 PYTHON:=$(shell which python)
-SERVER:=rabbit.devops.local
+SERVER:=localhost
 DATA=$(GIT)/dims-sample-data
 
 # To force queue base names to include username, uncomment next line.

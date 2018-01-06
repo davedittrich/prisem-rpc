@@ -66,10 +66,10 @@ def extract(_dict, namespace=None):
 # Set defaults (may be over-ridden by rpc_config.yml file)
 
 VHOST = '/'
-SERVER = 'rabbit.devops.local'
-DOMAIN = 'devops.local'
+SERVER = 'localhost'
+DOMAIN = 'localdomain'
 USER = 'rpc_user'
-PWD = 'rpcm3pwd'
+PWD = 'rpc_user'
 RPCEXCHANGE = ''
 LOGEXCHANGE = 'logs'
 QUEUEBASE = 'rpc'
@@ -91,7 +91,8 @@ def load_config():
     ---
 
     VHOST: '/'
-    SERVER: 'rabbit.devops.local'
+    SERVER: 'localhost'
+    DOMAIN: 'localdomain'
     USER: 'rpc_user'
     PWD: 'rpcm3pwd'
     RPCEXCHANGE: ''

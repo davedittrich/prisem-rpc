@@ -44,7 +44,7 @@ from dateutil import tz
 
 import semantic_version
 
-VERSION = '1.1.1'
+VERSION = '1.1.2'
 # v = semantic_version.Version(VERSION)
 # PROTOCOLVER = "%d.%d" % (v.major, v.minor)
 # RELEASE = "%d" % (v.patch)
